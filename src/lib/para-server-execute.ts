@@ -101,7 +101,7 @@ async function paraSessionFor(owner: string): Promise<{ session: string }> {
 
 async function paraClientFor(owner: string) {
   const { apiKey } = paraCreds();
-  const [{ Para, Environment }, { createParaViemClient }] = await Promise.all([
+  const [{ Para, Environment }, { createParaViemAccount, createParaViemClient }] = await Promise.all([
     import("@getpara/server-sdk") as Promise<any>,
     import("@getpara/viem-v2-integration") as Promise<any>,
   ]);
@@ -115,9 +115,12 @@ async function paraClientFor(owner: string) {
     throw new Error(`Para session for ${owner.slice(0, 6)}...${owner.slice(-4)} is empty. Sign out and back in.`);
   }
 
+  const account = createParaViemAccount({ para, address: owner as Address });
   return createParaViemClient({
     para,
+    noAccount: true,
     walletClientConfig: {
+      account,
       chain: monadChain as any,
       transport: monadTransport,
     },
