@@ -57,6 +57,7 @@ import {
 } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useDocumentTitle } from "@/lib/useDocumentTitle";
+import { ModalShell } from "@/components/ui/modal-shell";
 
 export const Route = createFileRoute("/cabals")({ component: CabalsPage });
 
@@ -651,12 +652,7 @@ function EditCabalModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center px-3">
-      <button className="absolute inset-0 bg-black/70 backdrop-blur-md" onClick={onClose} aria-label="Close" />
-      <div
-        className="relative w-full max-w-md rounded-3xl bg-background border border-white/10 overflow-hidden"
-        style={{ boxShadow: "0 30px 80px rgba(0,0,0,0.8)" }}
-      >
+    <ModalShell onClose={onClose} className="sm:max-w-md">
         <div className="px-4 py-3 flex items-center gap-3 border-b border-white/5">
           <button
             onClick={onClose}
@@ -741,8 +737,7 @@ function EditCabalModal({
             Invite code <span className="font-mono text-foreground">{cabal.invite_code}</span> · invite only
           </p>
         </div>
-      </div>
-    </div>
+    </ModalShell>
   );
 }
 
@@ -1437,12 +1432,7 @@ function CreateCabalModal({
   const initialsPreview = (name.trim() || "??").slice(0, 2).toUpperCase();
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center px-3">
-      <button className="absolute inset-0 bg-black/70 backdrop-blur-md" onClick={onClose} aria-label="Close" />
-      <div
-        className="relative w-full max-w-md rounded-3xl bg-background border border-white/5 overflow-hidden"
-        style={{ boxShadow: "0 30px 80px rgba(0,0,0,0.8)" }}
-      >
+    <ModalShell onClose={onClose} className="sm:max-w-md">
         {/* Header — Telegram-style: close left, title centered, action right */}
         <div className="px-4 py-3 flex items-center gap-3 border-b border-white/5">
           <button
@@ -1571,8 +1561,7 @@ function CreateCabalModal({
               </p>
           </div>
         </div>
-      </div>
-    </div>
+    </ModalShell>
   );
 }
 
@@ -1581,12 +1570,7 @@ function JoinCodeModal({ error, onClose, onJoin }: {
 }) {
   const [code, setCode] = useState("");
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center px-3">
-      <button className="absolute inset-0 bg-black/70 backdrop-blur-md" onClick={onClose} aria-label="Close" />
-      <div
-        className="relative w-full max-w-sm rounded-3xl bg-background border border-white/5 overflow-hidden"
-        style={{ boxShadow: "0 30px 80px rgba(0,0,0,0.8)" }}
-      >
+    <ModalShell onClose={onClose} className="sm:max-w-sm">
         <div className="px-4 py-3 flex items-center gap-3 border-b border-white/5">
           <button
             onClick={onClose}
@@ -1623,8 +1607,7 @@ function JoinCodeModal({ error, onClose, onJoin }: {
           />
           {error && <p className="text-xs text-down mt-2 text-center">{error}</p>}
         </div>
-      </div>
-    </div>
+    </ModalShell>
   );
 }
 

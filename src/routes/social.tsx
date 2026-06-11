@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { useDocumentTitle } from "@/lib/useDocumentTitle";
 import { UserAvatar } from "@/components/Handle";
+import { ModalShell } from "@/components/ui/modal-shell";
 
 export const Route = createFileRoute("/social")({ component: Social });
 
@@ -519,9 +520,7 @@ function NotificationSettings({
   onClose: () => void;
 }) {
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center px-3">
-      <button className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} aria-label="Close" />
-      <div className="relative w-full max-w-md rounded-3xl bg-background overflow-hidden" style={{ boxShadow: "0 30px 80px rgba(0,0,0,0.8)" }}>
+    <ModalShell onClose={onClose} className="sm:max-w-md">
         <div className="px-4 py-4 flex items-center gap-3 border-b border-white/10">
           <h2 className="flex-1 font-bold">Timeline notifications</h2>
           <button onClick={onClose} className="h-8 px-3 rounded-full bg-white/5 text-xs font-semibold">Done</button>
@@ -565,8 +564,7 @@ function NotificationSettings({
             )}
           </div>
         </div>
-      </div>
-    </div>
+    </ModalShell>
   );
 }
 

@@ -6,6 +6,7 @@ import { useState } from "react";
 import { Flag, X } from "lucide-react";
 import { useMe } from "@/lib/useMe";
 import { fileReport, type ReportKind, type ReportReason } from "@/lib/reports";
+import { ModalShell } from "@/components/ui/modal-shell";
 
 const REASONS: { value: ReportReason; label: string }[] = [
   { value: "spam",           label: "Spam" },
@@ -54,10 +55,7 @@ export function ReportButton({
       </button>
 
       {open && (
-        <div className="fixed inset-0 z-[60] grid place-items-center px-3">
-          <button className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setOpen(false)} />
-          <div className="relative w-full max-w-sm rounded-3xl bg-background border border-white/10 overflow-hidden"
-               style={{ boxShadow: "0 30px 80px rgba(0,0,0,0.8)" }}>
+        <ModalShell onClose={() => setOpen(false)} className="sm:max-w-sm" z="z-[60]">
             <div className="px-4 py-3 flex items-center gap-2 border-b border-white/10">
               <Flag className="size-4 text-down" />
               <h3 className="font-bold text-sm flex-1">Report {kind}</h3>
@@ -98,8 +96,7 @@ export function ReportButton({
                 {busy ? "Sending…" : "Submit report"}
               </button>
             </div>
-          </div>
-        </div>
+        </ModalShell>
       )}
     </>
   );

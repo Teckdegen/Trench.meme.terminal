@@ -11,11 +11,12 @@
 // so every user ends up bonded to someone. They never see the default.
 
 import { useEffect, useState } from "react";
-import { X, Loader2, Check } from "lucide-react";
+import { Loader2, Check } from "lucide-react";
 import { useMe } from "@/lib/useMe";
 import { SUPABASE_ENABLED } from "@/lib/supabase-hooks";
 import { bondReferralForNewUser, isReferralBonded } from "@/lib/rewards";
 import { REFERRAL_CODE_STORAGE_KEY } from "@/components/ReferralCapture";
+import { ModalHeader, ModalShell } from "@/components/ui/modal-shell";
 
 const DISMISSED_KEY = "monad.ref.bonded";
 
@@ -74,13 +75,9 @@ export function ReferralOnboarding() {
   };
 
   const closeWithoutBond = () => {
-    // Even on close-without-bond, mark dismissed so the modal doesn't
-    // hammer the user on every reload. They can still enter a code
-    // from /rewards if they change their mind.
-    if (me) {
-      try { localStorage.setItem(DISMISSED_KEY, me.toLowerCase()); } catch {}
-    }
-    setOpen(false);
+    // Treat dismiss as "use the default code" so new users are not left
+    // orphaned from the referral graph.
+    if (!busy && !done) void submit(false);
   };
 
   const finishSuccess = () => {
@@ -136,30 +133,16 @@ export function ReferralOnboarding() {
   if (!open || !me) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] grid place-items-center px-3">
-      <button
-        className="absolute inset-0 bg-black/80 backdrop-blur-md"
-        onClick={closeWithoutBond}
-        aria-label="Close"
-      />
-      <div
-        className="relative w-full max-w-sm rounded-3xl bg-background border border-white/10 overflow-hidden"
-        style={{ boxShadow: "0 30px 80px rgba(0,0,0,0.8)" }}
-      >
-        <div className="px-5 pt-5 flex items-center justify-between">
-          <h2 className="font-bold text-base">Got a referral code?</h2>
-          <button
-            onClick={closeWithoutBond}
-            className="size-8 grid place-items-center rounded-full hover:bg-white/10 text-muted-foreground"
-            aria-label="Close"
-          >
-            <X className="size-4" />
-          </button>
-        </div>
+    <ModalShell onClose={closeWithoutBond} className="sm:max-w-sm" z="z-[60]">
+        <ModalHeader
+          title="Referral code"
+          subtitle="Link your wallet before your first trade"
+          onClose={closeWithoutBond}
+        />
         <div className="px-5 pb-5 pt-2">
           <p className="text-xs text-muted-foreground leading-relaxed">
-            Enter the code your friend shared so they earn a kickback on every
-            trade you make. Codes look like <span className="font-mono text-foreground">trench042</span>.
+            Enter a friend's code so they earn referral rewards on your trading fees.
+            If you skip, your wallet uses the default house code.
           </p>
 
           <input
@@ -199,7 +182,6 @@ export function ReferralOnboarding() {
             </button>
           </div>
         </div>
-      </div>
-    </div>
+    </ModalShell>
   );
 }

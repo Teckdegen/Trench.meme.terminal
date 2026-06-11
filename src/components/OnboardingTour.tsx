@@ -8,6 +8,7 @@ import { X, ChevronRight, Sparkles, TrendingUp, Bell, Settings as Cog } from "lu
 import { supabase } from "@/lib/supabase";
 import { SUPABASE_ENABLED } from "@/lib/supabase-hooks";
 import { useMe } from "@/lib/useMe";
+import { ModalShell } from "@/components/ui/modal-shell";
 
 const KEY = "monad.onboarded";
 
@@ -73,10 +74,7 @@ export function OnboardingTour() {
   const last = step === steps.length - 1;
 
   return (
-    <div className="fixed inset-0 z-[60] grid place-items-center px-3">
-      <button className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={finish} aria-label="Close" />
-      <div className="relative w-full max-w-md rounded-3xl bg-background border border-white/10 overflow-hidden"
-           style={{ boxShadow: "0 30px 80px rgba(0,0,0,0.8)" }}>
+    <ModalShell onClose={finish} className="sm:max-w-md" z="z-[60]">
         <div className="px-4 py-3 flex items-center justify-between border-b border-white/10">
           <div className="flex items-center gap-1">
             {steps.map((_, i) => (
@@ -116,7 +114,6 @@ export function OnboardingTour() {
             </button>
           )}
         </div>
-      </div>
-    </div>
+    </ModalShell>
   );
 }

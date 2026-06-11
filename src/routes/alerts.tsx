@@ -13,6 +13,7 @@ import { useMe } from "@/lib/useMe";
 import { supabase } from "@/lib/supabase";
 import { useDocumentTitle } from "@/lib/useDocumentTitle";
 import { listAlerts, createAlert, toggleAlert, deleteAlert } from "@/lib/alerts-server";
+import { ModalShell } from "@/components/ui/modal-shell";
 
 export const Route = createFileRoute("/alerts")({ component: Alerts });
 
@@ -400,10 +401,7 @@ function CreateAlertModal({
   const Icon = tpl.icon;
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center px-3">
-      <button className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} aria-label="Close" />
-      <div className="relative w-full max-w-lg rounded-3xl bg-background overflow-hidden border border-white/10"
-           style={{ boxShadow: "0 30px 80px rgba(0,0,0,0.8)" }}>
+    <ModalShell onClose={onClose} className="sm:max-w-lg">
         <div className="px-4 py-4 flex items-center gap-3 border-b border-white/10">
           <button onClick={onClose} className="size-8 grid place-items-center rounded-full bg-white/5">
             <X className="size-4" />
@@ -514,8 +512,7 @@ function CreateAlertModal({
 
           <p className="text-[11px] text-muted-foreground">Alerts are delivered in-app to your Alerts inbox.</p>
         </div>
-      </div>
-    </div>
+    </ModalShell>
   );
 }
 

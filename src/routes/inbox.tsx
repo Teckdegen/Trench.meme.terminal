@@ -20,6 +20,7 @@ import { VerifiedBadge } from "@/components/VerifiedBadge";
 import { UserAvatar } from "@/components/Handle";
 import { useDocumentTitle } from "@/lib/useDocumentTitle";
 import { renderMentions } from "@/lib/renderMentions";
+import { ModalHeader, ModalShell } from "@/components/ui/modal-shell";
 
 export const Route = createFileRoute("/inbox")({
   component: Inbox,
@@ -439,14 +440,12 @@ function Inbox() {
 function NewMessageModal({ onClose, onStart }: { onClose: () => void; onStart: (handle: string) => void }) {
   const [handle, setHandle] = useState("");
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center px-3">
-      <button className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} aria-label="Close" />
-      <div className="relative w-full max-w-md rounded-3xl bg-background overflow-hidden" style={{ boxShadow: "0 30px 80px rgba(0,0,0,0.8)" }}>
-        <div className="px-4 py-4 flex items-center gap-3">
-          <button onClick={onClose} className="size-8 grid place-items-center rounded-full bg-white/5">
-            <X className="size-4" />
-          </button>
-          <h2 className="flex-1 font-bold">New message</h2>
+    <ModalShell onClose={onClose} className="sm:max-w-md">
+        <ModalHeader
+          title="New message"
+          subtitle="Start a private Gun DM"
+          onClose={onClose}
+          action={
           <button
             onClick={() => onStart(handle)}
             disabled={!handle.trim()}
@@ -454,7 +453,8 @@ function NewMessageModal({ onClose, onStart }: { onClose: () => void; onStart: (
           >
             Start
           </button>
-        </div>
+          }
+        />
         <div className="px-4 pb-5">
           <label className="block">
             <span className="text-xs text-muted-foreground">To (@handle or 0x…)</span>
@@ -470,7 +470,6 @@ function NewMessageModal({ onClose, onStart }: { onClose: () => void; onStart: (
             </div>
           </label>
         </div>
-      </div>
-    </div>
+    </ModalShell>
   );
 }

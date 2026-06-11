@@ -12,6 +12,7 @@ import {
 // the single Claim button. Everything else renders text-only.
 import { Copy, Check, ArrowDownToLine } from "lucide-react";
 import { useDocumentTitle } from "@/lib/useDocumentTitle";
+import { ModalHeader, ModalShell } from "@/components/ui/modal-shell";
 
 export const Route = createFileRoute("/rewards")({ component: Rewards });
 
@@ -416,22 +417,8 @@ function ClaimModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center px-3">
-      <button
-        className="absolute inset-0 bg-black/70 backdrop-blur-md"
-        onClick={onClose}
-        aria-label="Close"
-      />
-      <div
-        className="relative w-full max-w-sm rounded-3xl bg-background border border-white/10 overflow-hidden"
-        style={{ boxShadow: "0 30px 80px rgba(0,0,0,0.8)" }}
-      >
-        <div className="px-5 pt-5 pb-2 flex items-center justify-between">
-          <h2 className="font-bold text-base">Claim points</h2>
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground text-sm">
-            Close
-          </button>
-        </div>
+    <ModalShell onClose={onClose} className="sm:max-w-sm">
+        <ModalHeader title="Claim points" subtitle="Redeem rewards as MON" onClose={onClose} />
         <div className="px-5 pb-5">
           <div className="text-center my-4">
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">
@@ -481,8 +468,7 @@ function ClaimModal({
             Redemptions are settled by the bot worker once your tx is signed and broadcast.
           </p>
         </div>
-      </div>
-    </div>
+    </ModalShell>
   );
 }
 

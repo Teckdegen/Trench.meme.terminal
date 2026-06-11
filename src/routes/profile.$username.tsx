@@ -13,6 +13,7 @@ import { ReportButton } from "@/components/ReportButton";
 import { ProfileActionButton } from "@/components/ProfileActionButton";
 import { UserAvatar } from "@/components/Handle";
 import { isOwnAccount } from "@/lib/own-profile";
+import { ModalShell } from "@/components/ui/modal-shell";
 
 // A small fixed token we hit for the "all swaps by this wallet" query.
 // Nad.fun's /trade/swap-history accepts ?account_id=… so passing any indexed
@@ -779,16 +780,7 @@ function EditProfileModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center px-3 py-6 overflow-y-auto">
-      <button
-        className="absolute inset-0 bg-black/70 backdrop-blur-md"
-        onClick={onClose}
-        aria-label="Close"
-      />
-      <div
-        className="relative w-full max-w-lg rounded-3xl bg-background border border-white/10 overflow-hidden my-auto"
-        style={{ boxShadow: "0 30px 80px rgba(0,0,0,0.8)" }}
-      >
+    <ModalShell onClose={onClose} className="sm:max-w-lg max-h-[calc(100vh-1.5rem)] sm:max-h-[calc(100vh-3rem)] overflow-y-auto">
         {/* Header — close (left), title (center), Save pill (right) */}
         <div className="sticky top-0 z-20 px-4 h-14 flex items-center gap-3 bg-background/85 backdrop-blur-md border-b border-white/5">
           <button
@@ -932,8 +924,7 @@ function EditProfileModal({
             </p>
           )}
         </div>
-      </div>
-    </div>
+    </ModalShell>
   );
 }
 

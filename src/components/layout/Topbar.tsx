@@ -1,4 +1,4 @@
-import { Search, Plus, Menu, Star, X, ArrowLeft, Copy, ChevronDown, Loader2, BadgeCheck, Check } from "lucide-react";
+import { Search, Plus, Menu, Star, Copy, ChevronDown, Loader2, BadgeCheck, Check } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { APP_NAME, APP_LOGO } from "@/lib/brand";
@@ -8,6 +8,7 @@ import { useIdentity, labelFor } from "@/lib/identity";
 import { useMonBalance, sendMon } from "@/lib/wallet-tx";
 import type { Hex } from "viem";
 import { MonLogo } from "@/components/MonLogo";
+import { ModalHeader, ModalShell } from "@/components/ui/modal-shell";
 
 type FundView = "home" | "deposit" | "withdraw";
 
@@ -195,32 +196,11 @@ function SearchOverlay({
 
 function FundsModal({ view, setView, onClose }: { view: FundView; setView: (v: FundView) => void; onClose: () => void }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
-      <button className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} aria-label="Close" />
-      <div className="relative w-full sm:w-[460px] sm:max-w-[92vw] rounded-t-3xl sm:rounded-3xl bg-background overflow-hidden" style={{ boxShadow: "0 30px 80px rgba(0,0,0,0.8)" }}>
-        {view === "home" && <FundsHome onClose={onClose} onPick={setView} />}
-        {view === "deposit" && <DepositView onBack={() => setView("home")} onClose={onClose} />}
-        {view === "withdraw" && <WithdrawView onBack={() => setView("home")} onClose={onClose} />}
-      </div>
-    </div>
-  );
-}
-
-function ModalHeader({ title, onBack, onClose }: { title: string; onBack?: () => void; onClose: () => void }) {
-  return (
-    <div className="px-4 py-4 flex items-center gap-3">
-      {onBack ? (
-        <button onClick={onBack} className="size-8 grid place-items-center rounded-full hover:bg-white/5">
-          <ArrowLeft className="size-4" />
-        </button>
-      ) : (
-        <div className="size-8" />
-      )}
-      <h2 className="flex-1 text-center font-bold">{title}</h2>
-      <button onClick={onClose} className="size-8 grid place-items-center rounded-full bg-white/5">
-        <X className="size-4" />
-      </button>
-    </div>
+    <ModalShell onClose={onClose} className="sm:w-[460px]">
+      {view === "home" && <FundsHome onClose={onClose} onPick={setView} />}
+      {view === "deposit" && <DepositView onBack={() => setView("home")} onClose={onClose} />}
+      {view === "withdraw" && <WithdrawView onBack={() => setView("home")} onClose={onClose} />}
+    </ModalShell>
   );
 }
 

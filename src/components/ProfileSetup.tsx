@@ -6,6 +6,7 @@ import { AtSign, Check, Loader2, X } from "lucide-react";
 import { useMe } from "@/lib/useMe";
 import { patchIdentity } from "@/lib/identity";
 import { useAccountProfile, updateMyProfile, isHandleAvailable } from "@/lib/supabase-hooks";
+import { ModalShell } from "@/components/ui/modal-shell";
 
 export function ProfileSetup() {
   const me = useMe();
@@ -71,12 +72,7 @@ export function ProfileSetup() {
   const canSubmit = available === true && !saving;
 
   return (
-    <div className="fixed inset-0 z-[65] grid place-items-center px-3">
-      <div className="absolute inset-0 bg-black/85 backdrop-blur-md" />
-      <div
-        className="relative w-full max-w-md rounded-3xl bg-background border border-white/10 p-6 overflow-hidden"
-        style={{ boxShadow: "0 30px 80px rgba(0,0,0,0.8)" }}
-      >
+    <ModalShell onClose={() => setOpen(false)} className="sm:max-w-md p-6" z="z-[65]">
         {/* Top sheen */}
         <div className="absolute -top-px left-8 right-8 h-px bg-gradient-to-r from-transparent via-primary/60 to-transparent" />
 
@@ -161,7 +157,6 @@ export function ProfileSetup() {
             You can edit any of this later from your profile page.
           </p>
         </div>
-      </div>
-    </div>
+    </ModalShell>
   );
 }

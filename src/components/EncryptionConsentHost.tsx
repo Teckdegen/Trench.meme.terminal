@@ -5,6 +5,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Lock, X, ShieldCheck, Key as KeyIcon } from "lucide-react";
+import { ModalShell } from "@/components/ui/modal-shell";
 
 type Resolver = (accept: boolean) => void;
 
@@ -31,10 +32,7 @@ export function EncryptionConsentHost() {
 
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-[70] grid place-items-center px-3">
-      <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" />
-      <div className="relative w-full max-w-sm rounded-3xl bg-background border border-white/10 p-6 text-center overflow-hidden"
-           style={{ boxShadow: "0 30px 80px rgba(0,0,0,0.8)" }}>
+    <ModalShell onClose={() => finish(false)} className="sm:max-w-sm p-6 text-center" z="z-[70]">
         <button onClick={() => finish(false)} className="absolute top-3 right-3 size-7 grid place-items-center rounded-full bg-white/5 text-muted-foreground">
           <X className="size-3.5" />
         </button>
@@ -68,7 +66,6 @@ export function EncryptionConsentHost() {
           Skip and your chat keys won't be backed up — clearing browser storage will lose
           access to your cabals.
         </p>
-      </div>
-    </div>
+    </ModalShell>
   );
 }
