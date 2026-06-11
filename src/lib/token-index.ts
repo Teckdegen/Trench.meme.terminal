@@ -10,6 +10,7 @@ import { SUPABASE_ENABLED } from "./supabase-hooks";
 import { fetchChart, fetchTokenMetadata, fetchMetrics } from "./nadfun/server";
 import type { BarResponse, ChartResolution, TokenMetadataResponse } from "./nadfun/types";
 import { getMonUsdPrice, volumeToUsd } from "./mon-usd";
+import { defaultAccountHandle, defaultDisplayName } from "./handles";
 
 /** UI + bot poll interval — keep in sync with bot TOKEN_SYNC_INTERVAL_MS */
 export const TOKEN_TAB_REFRESH_MS = 5_000;
@@ -58,6 +59,35 @@ export type IndexedChatMessage = {
   body: string;
   created_at: string;
 };
+
+function normalizeEvmAddress(address: string, label = "address") {
+  const value = String(address ?? "").trim().toLowerCase();
+  if (!/^0x[a-f0-9]{40}$/.test(value)) throw new Error(`Invalid ${label}`);
+  return value;
+}
+
+async function ensureAccountRow(sb: ReturnType<typeof supabaseAdmin>, address: string) {
+  const addr = normalizeEvmAddress(address, "wallet address");
+  const { error } = await sb.from("accounts").upsert({
+    address: addr,
+    handle: defaultAccountHandle(addr),
+    display_name: defaultDisplayName(addr),
+  }, { onConflict: "address", ignoreDuplicates: true });
+  if (error) throw new Error(error.message);
+  return addr;
+}
+
+async function ensureTokenRow(sb: ReturnType<typeof supabaseAdmin>, address: string) {
+  const addr = normalizeEvmAddress(address, "token address");
+  const fallback = addr.slice(2, 8).toUpperCase();
+  const { error } = await sb.from("tokens").upsert({
+    address: addr,
+    symbol: fallback,
+    name: `Token ${fallback}`,
+  }, { onConflict: "address", ignoreDuplicates: true });
+  if (error) throw new Error(error.message);
+  return addr;
+}
 
 function mapNadfunToSnapshot(
   meta: TokenMetadataResponse,
@@ -334,12 +364,17 @@ export function useTokenChat(token: string | undefined, enabled: boolean, limit 
 export const sendTokenChatMessage = createServerFn({ method: "POST" })
   .inputValidator((d: { token: string; me: string; body: string }) => d)
   .handler(async ({ data }) => {
-    if (!data.body.trim()) return;
+    const body = String(data.body ?? "").trim();
+    if (!body) return;
     const sb = supabaseAdmin();
+    const [token, me] = await Promise.all([
+      ensureTokenRow(sb, data.token),
+      ensureAccountRow(sb, data.me),
+    ]);
     const { error } = await sb.from("token_chat_messages").insert({
-      token_address: data.token.toLowerCase(),
-      sender_address: data.me.toLowerCase(),
-      body: data.body.trim(),
+      token_address: token,
+      sender_address: me,
+      body,
     });
     if (error) throw new Error(error.message);
   });

@@ -13,6 +13,35 @@ const enabled = !!import.meta.env.VITE_SUPABASE_URL && !!import.meta.env.VITE_SU
 
 export const SUPABASE_ENABLED = enabled;
 
+function normalizeEvmAddress(address: string, label = "address") {
+  const value = String(address ?? "").trim().toLowerCase();
+  if (!/^0x[a-f0-9]{40}$/.test(value)) throw new Error(`Invalid ${label}`);
+  return value;
+}
+
+async function ensureAccountRow(sb: ReturnType<typeof supabaseAdmin>, address: string) {
+  const addr = normalizeEvmAddress(address, "wallet address");
+  const { error } = await sb.from("accounts").upsert({
+    address: addr,
+    handle: defaultAccountHandle(addr),
+    display_name: defaultDisplayName(addr),
+  }, { onConflict: "address", ignoreDuplicates: true });
+  if (error) throw new Error(error.message);
+  return addr;
+}
+
+async function ensureTokenRow(sb: ReturnType<typeof supabaseAdmin>, address: string) {
+  const addr = normalizeEvmAddress(address, "token address");
+  const fallback = addr.slice(2, 8).toUpperCase();
+  const { error } = await sb.from("tokens").upsert({
+    address: addr,
+    symbol: fallback,
+    name: `Token ${fallback}`,
+  }, { onConflict: "address", ignoreDuplicates: true });
+  if (error) throw new Error(error.message);
+  return addr;
+}
+
 // ---------- POSTS (social feed) -----------------------------------------
 export type PostRow = {
   id: string;
@@ -240,11 +269,16 @@ export const createPost = createServerFn({ method: "POST" })
   }) => d)
   .handler(async ({ data: input }): Promise<PostRow | null> => {
     const sb = supabaseAdmin();
+    const author = await ensureAccountRow(sb, input.author_address);
+    const body = String(input.body ?? "").trim();
+    if (!body) throw new Error("Post cannot be empty");
+    if (body.length > 200) throw new Error("Post must be 200 characters or less");
+
     // Auto-resolve the FIRST $CASHTAG in the body so cashtag links jump
     // straight to the right token instead of needing the /t/<sym> redirect.
     let quoted = input.quoted_token ?? null;
     if (!quoted) {
-      const m = /\$([A-Za-z][A-Za-z0-9]{0,15})/.exec(input.body);
+      const m = /\$([A-Za-z][A-Za-z0-9]{0,15})/.exec(body);
       if (m) {
         try {
           const { searchTokens } = await import("@/lib/dirol");
@@ -254,8 +288,16 @@ export const createPost = createServerFn({ method: "POST" })
         } catch { /* leave quoted=null; RichText falls back to /t/<sym> */ }
       }
     }
+    if (quoted) quoted = await ensureTokenRow(sb, quoted);
+
     const { data, error } = await sb.from("posts")
-      .insert({ ...input, quoted_token: quoted })
+      .insert({
+        author_address: author,
+        body,
+        quoted_token: quoted,
+        trade_tx_hash: input.trade_tx_hash ?? null,
+        parent_id: input.parent_id ?? null,
+      })
       .select().single();
     if (error) throw new Error(error.message);
     return data as PostRow;

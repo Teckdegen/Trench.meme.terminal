@@ -156,7 +156,6 @@ function Social() {
   const rankedPosts = useRankedPosts({ limit: 50 });
   const followingPosts = usePosts({ following: feedTab === "Following" ? followingAddrs : undefined });
   const sbPosts = feedTab === "Following" ? followingPosts : (rankedPosts ?? followingPosts);
-  const supabaseLive = SUPABASE_ENABLED && !!sbPosts;
 
   useEffect(() => {
     try { localStorage.setItem(FOLLOW_KEY, JSON.stringify([...followed])); } catch {}
@@ -272,7 +271,7 @@ function Social() {
 
 
           {/* Composer */}
-          <Composer me={me} supabaseLive={supabaseLive} />
+          <Composer me={me} supabaseLive={SUPABASE_ENABLED} />
 
           {/* Pinned announcement (latest post from @trenchmem) */}
           <div className="px-4 pt-3">
@@ -465,9 +464,14 @@ function Composer({ me, supabaseLive }: { me: string | undefined; supabaseLive: 
         tokenPicksRef.current.clear();
       } catch (e) {
         console.error(e);
+        alert(e instanceof Error ? e.message : "Could not post right now");
       } finally {
         setPosting(false);
       }
+    } else if (!me) {
+      alert("Connect wallet to post.");
+    } else {
+      alert("Supabase is not configured for feed posts.");
     }
   };
   return (
@@ -492,7 +496,7 @@ function Composer({ me, supabaseLive }: { me: string | undefined; supabaseLive: 
                 }
               }}
               placeholder={me ? "What's happening onchain? Type $ for tokens, @ for traders…" : "Connect wallet to post"}
-              disabled={!me || !supabaseLive || posting}
+              disabled={!me || posting}
               className="w-full bg-transparent text-base placeholder:text-muted-foreground/70 focus:outline-none py-2 disabled:opacity-50 resize-none"
             />
           )}
@@ -509,7 +513,7 @@ function Composer({ me, supabaseLive }: { me: string | undefined; supabaseLive: 
             </span>
             <button
               onClick={submit}
-              disabled={!body.trim() || body.length > 200 || posting || (supabaseLive && !me)}
+              disabled={!body.trim() || body.length > 200 || posting || !me}
               className="h-8 px-4 rounded-full lit-purple text-sm font-semibold disabled:opacity-40"
             >
               {posting ? "Posting…" : "Post"}

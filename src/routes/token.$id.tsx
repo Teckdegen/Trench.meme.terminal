@@ -845,9 +845,13 @@ function TokenChat({ tokenAddress, symbol, enabled }: { tokenAddress: string; sy
     let body = draft.trim();
     if (sentiment === "bullish") body = `▲ ${body}`;
     if (sentiment === "bearish") body = `▼ ${body}`;
-    await sendBody(body);
-    setDraft("");
-    setSentiment(null);
+    try {
+      await sendBody(body);
+      setDraft("");
+      setSentiment(null);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Failed to send chat message");
+    }
   };
 
   const sendImage = (file: File) => {
