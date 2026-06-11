@@ -56,34 +56,15 @@ function admin() {
 }
 
 function paraCreds() {
-  const apiKey = (process.env.PARA_API_KEY || process.env.VITE_PARA_API_KEY || "").trim();
-  const apiSecret = (process.env.PARA_API_SECRET || "").trim();
-  if (!apiKey) throw new Error("Para server is not configured: set PARA_API_KEY.");
-  if (!apiSecret) {
-    console.warn("[para] PARA_API_SECRET is empty; SDK signing uses PARA_API_KEY, but keep the secret in Vercel for REST/admin flows.");
-  }
-  return { apiKey };
+  const apiKey = (process.env.PARA_API_SECRET || process.env.PARA_REST_API_KEY || process.env.PARA_API_KEY || "").trim();
+  if (!apiKey) throw new Error("Para REST API is not configured: set PARA_API_SECRET.");
+  const baseUrl = (process.env.PARA_API_BASE || "https://api.getpara.com").replace(/\/$/, "");
+  return { apiKey, baseUrl };
 }
 
-function assertHeadlessSession(owner: string, session: string | null) {
-  if (!session) {
-    throw new Error(`No zero-popup Para session for ${owner.slice(0, 6)}...${owner.slice(-4)}. Sign out and back in.`);
-  }
-  try {
-    const decoded = JSON.parse(Buffer.from(session, "base64").toString("utf8"));
-    const wallets = Object.values(decoded.wallets ?? {}) as any[];
-    const hasEvmSigner = wallets.some((w) => w?.type === "EVM" && w?.signer);
-    if (!hasEvmSigner || !decoded.sessionCookie) {
-      throw new Error("missing signer");
-    }
-  } catch {
-    throw new Error(`Saved Para session is not zero-popup ready for ${owner.slice(0, 6)}...${owner.slice(-4)}. Sign out and back in.`);
-  }
-}
-
-async function paraSessionFor(owner: string): Promise<{ session: string }> {
+async function paraWalletFor(owner: string): Promise<{ walletId: string }> {
   const { data } = await admin().from("para_wallets")
-    .select("session, session_cookie, expires_at, updated_at")
+    .select("wallet_id, expires_at, updated_at")
     .eq("owner_address", owner.toLowerCase())
     .maybeSingle();
   const expiresAt = (data as any)?.expires_at
@@ -94,40 +75,60 @@ async function paraSessionFor(owner: string): Promise<{ session: string }> {
   if (expiresAt && Date.now() > expiresAt) {
     throw new Error("Para session expired - sign in again.");
   }
-  const session = (data as any)?.session ?? null;
-  assertHeadlessSession(owner, session);
-  return { session };
+  const walletId = (data as any)?.wallet_id;
+  if (!walletId) throw new Error(`No Para REST wallet for ${owner.slice(0, 6)}...${owner.slice(-4)}. Sign out and back in.`);
+  return { walletId };
 }
 
-async function paraClientFor(owner: string) {
-  const { apiKey } = paraCreds();
-  const [{ Para, Environment }, { createParaViemAccount, createParaViemClient }] = await Promise.all([
-    import("@getpara/server-sdk") as Promise<any>,
-    import("@getpara/viem-v2-integration") as Promise<any>,
-  ]);
-
-  const para = new Para(Environment.PROD, apiKey);
-  const { session } = await paraSessionFor(owner);
-
-  if (typeof para.importSession === "function") {
-    await para.importSession(session);
-  } else {
-    throw new Error(`Para session for ${owner.slice(0, 6)}...${owner.slice(-4)} is empty. Sign out and back in.`);
-  }
-
-  const account = createParaViemAccount({ para, address: owner as Address });
-  const client = createParaViemClient({
-    para,
-    walletClientConfig: {
-      account,
-      chain: monadChain as any,
-      transport: monadTransport,
+async function paraRestSignTransaction(owner: string, tx: {
+  to: Address;
+  data?: Hex;
+  value?: bigint;
+  nonce: number;
+  gasLimit: bigint;
+  gasPrice: bigint;
+}): Promise<Hex> {
+  const { apiKey, baseUrl } = paraCreds();
+  const { walletId } = await paraWalletFor(owner);
+  const res = await fetch(`${baseUrl}/v1/wallets/${encodeURIComponent(walletId)}/sign-transaction`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "X-API-Key": apiKey,
+      "Idempotency-Key": crypto.randomUUID(),
     },
+    body: JSON.stringify({
+      broadcast: true,
+      transaction: {
+        to: tx.to,
+        chainId: 143,
+        type: 0,
+        value: (tx.value ?? 0n).toString(),
+        data: tx.data ?? "0x",
+        nonce: tx.nonce,
+        gasLimit: tx.gasLimit.toString(),
+        gasPrice: tx.gasPrice.toString(),
+      },
+    }),
   });
-  if (account.address?.toLowerCase?.() !== owner.toLowerCase()) {
-    throw new Error(`Para session wallet mismatch. Expected ${owner.slice(0, 6)}...${owner.slice(-4)}, got ${account.address}. Sign out and back in.`);
+
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const message = json?.message || json?.error || `Para REST sign-transaction failed (${res.status})`;
+    const code = json?.code ? `${json.code}: ` : "";
+    throw new Error(`${code}${message}`);
   }
-  return { client, account };
+
+  const hash = json?.txHash;
+  if (typeof hash === "string" && /^0x[a-fA-F0-9]{64}$/.test(hash)) return hash as Hex;
+
+  const signed = json?.signedTransaction;
+  if (typeof signed === "string" && signed.startsWith("0x")) {
+    const pub = createPublicClient({ chain: monadChain as any, transport: monadTransport });
+    return await pub.sendRawTransaction({ serializedTransaction: signed as Hex });
+  }
+
+  throw new Error("Para REST did not return a transaction hash.");
 }
 
 export async function sendViaPara(owner: string, opts: {
@@ -157,26 +158,23 @@ export async function sendViaPara(owner: string, opts: {
     const needed = (opts.value ?? 0n) + (gas && gasPrice ? gas * gasPrice : 0n);
     if (bal < needed) throw new Error("Insufficient MON for amount plus gas.");
   }
-  const { client, account } = await paraClientFor(owner);
+  const gasPrice = await pub.getGasPrice();
+  const nonce = await pub.getTransactionCount({ address: owner as Address, blockTag: "pending" });
   const tx = {
-    account,
-    chain: monadChain as any,
     to: opts.to,
     data: opts.data,
     value: opts.value,
-    gas,
+    nonce,
+    gasLimit: gas ?? 42_000n,
+    gasPrice,
   };
   try {
-    const request = await client.prepareTransactionRequest(tx);
-    const signed = await client.signTransaction(request);
-    return await pub.sendRawTransaction({ serializedTransaction: signed });
+    return await paraRestSignTransaction(owner, tx);
   } catch (e: any) {
     const msg = String(e?.shortMessage ?? e?.message ?? e);
     if (!/rpc request failed|network|timeout|fetch/i.test(msg)) throw e;
     await new Promise((resolve) => setTimeout(resolve, 900));
-    const request = await client.prepareTransactionRequest(tx);
-    const signed = await client.signTransaction(request);
-    return await pub.sendRawTransaction({ serializedTransaction: signed });
+    return await paraRestSignTransaction(owner, tx);
   }
 }
 
