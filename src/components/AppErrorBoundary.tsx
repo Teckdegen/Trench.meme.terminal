@@ -17,6 +17,17 @@ export class AppErrorBoundary extends Component<Props, State> {
   componentDidCatch(error: Error, info: { componentStack?: string }) {
     // eslint-disable-next-line no-console
     console.error("[AppErrorBoundary]", error, info);
+    if (
+      typeof window !== "undefined" &&
+      /Failed to fetch dynamically imported module|Importing a module script failed|Loading chunk/i.test(error.message)
+    ) {
+      const key = "trench.chunk-reload";
+      if (sessionStorage.getItem(key) !== "1") {
+        sessionStorage.setItem(key, "1");
+        window.location.reload();
+        return;
+      }
+    }
     // Optional analytics/Sentry hook
     if (typeof window !== "undefined" && (window as any).Sentry?.captureException) {
       (window as any).Sentry.captureException(error);

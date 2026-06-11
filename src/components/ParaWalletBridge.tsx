@@ -28,7 +28,7 @@ function BridgeInner({ hooks, me }: { hooks: any; me: string }) {
   const paraUserId = account?.userId ?? account?.embedded?.userId ?? client?.userId ?? null;
 
   useEffect(() => {
-    if (!client || !walletId || !me) return;
+    if (!account?.isConnected || account?.isLoading || !client || !walletId || !me) return;
     const key = `${me.toLowerCase()}:${walletId}`;
     if (registeredFor.current === key) return;
 
@@ -56,7 +56,7 @@ function BridgeInner({ hooks, me }: { hooks: any; me: string }) {
     return () => {
       cancel = true;
     };
-  }, [client, me, paraUserId, walletId]);
+  }, [account?.isConnected, account?.isLoading, client, me, paraUserId, walletId]);
 
   return null;
 }

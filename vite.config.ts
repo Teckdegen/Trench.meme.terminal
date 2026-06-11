@@ -9,7 +9,6 @@ import wasm from "vite-plugin-wasm";
 
 const paraAaStub = fileURLToPath(new URL("./src/lib/para-aa-stub.ts", import.meta.url));
 const paraExternalWalletStub = fileURLToPath(new URL("./src/lib/para-external-wallet-stub.ts", import.meta.url));
-const browserEvents = fileURLToPath(new URL("./src/lib/browser-events.ts", import.meta.url));
 
 export default defineConfig(({ isSsrBuild }) => ({
   plugins: [
@@ -65,7 +64,7 @@ export default defineConfig(({ isSsrBuild }) => ({
       "@getpara/cosmos-wallet-connectors": paraExternalWalletStub,
       "@getpara/evm-wallet-connectors": paraExternalWalletStub,
       "@getpara/solana-wallet-connectors": paraExternalWalletStub,
-      ...(!isSsrBuild ? { events: browserEvents } : {}),
+      ...(!isSsrBuild ? { events: "events/" } : {}),
     },
   },
 }));

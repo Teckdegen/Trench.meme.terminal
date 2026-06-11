@@ -164,25 +164,13 @@ export async function fireWithPara(p: {
   const FEE_WALLET = (process.env.FEE_WALLET_ADDRESS ?? "") as Address;
   const feeOk = /^0x[a-fA-F0-9]{40}$/.test(FEE_WALLET);
   const feeBps = BigInt(FEE_BPS[p.source] ?? 0);
-  const feeAmount = feeOk && feeBps > 0n ? (p.amountIn * feeBps) / 10000n : 0n;
-  const netIn = p.amountIn - feeAmount;
   const isBuy = p.side === "BUY";
+  const feeAmount = !isBuy && feeOk && feeBps > 0n ? (p.amountIn * feeBps) / 10000n : 0n;
+  const netIn = p.amountIn;
   let feePaidMon = 0n;
 
-  if (isBuy && feeAmount > 0n) {
-    let feeHash: Hex;
-    try {
-      feeHash = await sendViaPara(p.owner, { to: FEE_WALLET, value: feeAmount });
-    } catch (e: any) {
-      const { apiKey } = paraCreds();
-      const keyHint = apiKey ? `${apiKey.slice(0, 6)}...${apiKey.slice(-4)}` : "(empty)";
-      throw new Error(`fee tx submission failed: ${e?.shortMessage ?? e?.message ?? e} [para apiKey=${keyHint}]`);
-    }
-    const feeReceipt = await pub.waitForTransactionReceipt({ hash: feeHash, timeout: 60_000 });
-    if (feeReceipt.status !== "success") {
-      throw new Error(`fee tx reverted (${feeHash}) - aborting swap to prevent free trade`);
-    }
-    feePaidMon = feeAmount;
+  if (isBuy && feeOk && feeBps > 0n) {
+    console.warn("[para-exec] buy fee transfer skipped; executing swap without pre-fee tx");
   }
 
   let hash: Hex;

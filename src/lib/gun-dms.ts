@@ -1,10 +1,12 @@
-// Decentralized DMs on Gun.js (encrypted). No Supabase.
+// Direct messages. Kept under the old module name so the Inbox and floating
+// bubbles don't need to know whether the transport is Gun or Supabase.
 
+import { createServerFn } from "@tanstack/react-start";
 import { useEffect, useMemo, useState } from "react";
-import { GUN_ENABLED, NS, getGun } from "@/lib/gun-client";
-import { gunPutAck, gunSend, useGunChat, gunDeleteMessage, gunEditMessage } from "@/lib/gun";
+import { supabaseAdmin } from "@/lib/supabase";
+import { defaultAccountHandle, defaultDisplayName } from "@/lib/handles";
 
-export { GUN_ENABLED };
+export const GUN_ENABLED = true;
 
 export function dmChannelId(a: string, b: string): string {
   const [x, y] = [a.toLowerCase(), b.toLowerCase()].sort();
@@ -32,327 +34,260 @@ export type DMThread = {
   unread: number;
 };
 
+function cleanAddress(addr: string) {
+  const out = addr.trim().toLowerCase();
+  if (!/^0x[a-f0-9]{40}$/.test(out)) throw new Error("Invalid wallet address.");
+  return out;
+}
+
+function preview(body: string, kind: "text" | "image") {
+  if (kind === "image") return "Photo";
+  return body.length > 80 ? `${body.slice(0, 80)}...` : body;
+}
+
+async function ensureAccount(address: string) {
+  const { error } = await supabaseAdmin().from("accounts").upsert({
+    address,
+    handle: defaultAccountHandle(address),
+    display_name: defaultDisplayName(address),
+  }, { onConflict: "address", ignoreDuplicates: true });
+  if (error) throw new Error(error.message);
+}
+
 function readStorageKey(me: string, channelId: string) {
-  return `gun.read.${me.toLowerCase()}.${channelId}`;
+  return `dm.read.${me.toLowerCase()}.${channelId}`;
 }
 
-const DM_MSG_CACHE = "gun.dm.messages.v1";
-const DM_THREAD_CACHE = "gun.dm.threads.v1";
-
-function loadMsgCache(channelId: string): DMMessage[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const all = JSON.parse(localStorage.getItem(DM_MSG_CACHE) ?? "{}") as Record<string, DMMessage[]>;
-    return all[channelId] ?? [];
-  } catch { return []; }
-}
-
-function saveMsgCache(channelId: string, messages: DMMessage[]) {
-  if (typeof window === "undefined") return;
-  try {
-    const all = JSON.parse(localStorage.getItem(DM_MSG_CACHE) ?? "{}") as Record<string, DMMessage[]>;
-    all[channelId] = messages.slice(-300);
-    localStorage.setItem(DM_MSG_CACHE, JSON.stringify(all));
-  } catch { /* quota */ }
-}
-
-function loadThreadCache(me: string): DMThread[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const all = JSON.parse(localStorage.getItem(DM_THREAD_CACHE) ?? "{}") as Record<string, DMThread[]>;
-    return all[me.toLowerCase()] ?? [];
-  } catch { return []; }
-}
-
-function saveThreadCache(me: string, threads: DMThread[]) {
-  if (typeof window === "undefined") return;
-  try {
-    const all = JSON.parse(localStorage.getItem(DM_THREAD_CACHE) ?? "{}") as Record<string, DMThread[]>;
-    all[me.toLowerCase()] = threads.slice(0, 100);
-    localStorage.setItem(DM_THREAD_CACHE, JSON.stringify(all));
-  } catch { /* quota */ }
+function readUpTo(me: string, channelId: string) {
+  if (typeof window === "undefined") return 0;
+  return Number(localStorage.getItem(readStorageKey(me, channelId)) ?? 0);
 }
 
 export function markThreadRead(me: string, partner: string) {
   const channelId = dmChannelId(me, partner);
   if (typeof window !== "undefined") {
     localStorage.setItem(readStorageKey(me, channelId), String(Date.now()));
-    window.dispatchEvent(new Event("gun-dm-read"));
+    window.dispatchEvent(new Event("dm-read"));
   }
 }
 
-function unreadFor(me: string, channelId: string, lastSender: string, lastTs: number, partner: string) {
-  if (!lastTs || lastSender === me.toLowerCase()) return 0;
-  if (lastSender !== partner.toLowerCase()) return 0;
-  const readUp = typeof window !== "undefined"
-    ? Number(localStorage.getItem(readStorageKey(me, channelId)) ?? 0)
-    : 0;
-  return lastTs > readUp ? 1 : 0;
-}
-
-// Optimistic overlay so sent messages appear instantly while Gun syncs.
-const optimisticByChannel = new Map<string, DMMessage[]>();
-const optimisticSubs = new Set<() => void>();
-
-function bumpOptimistic() {
-  optimisticSubs.forEach((fn) => fn());
-}
-
-function persistDmMessage(channelId: string, msg: DMMessage) {
-  const existing = loadMsgCache(channelId);
-  const byId = new Map(existing.map((m) => [m.id, m]));
-  byId.set(msg.id, msg);
-  saveMsgCache(channelId, [...byId.values()].sort((a, b) => a.ts - b.ts));
-}
-
-function toDmMessage(m: {
-  id: string;
-  sender: string;
-  body: string;
-  kind?: string;
-  ts: number;
-  edited_at?: number | null;
-  deleted?: boolean;
-  deleted_by?: string | null;
-  deleted_at?: number | null;
-}): DMMessage {
-  return {
-    id: m.id,
-    sender: m.sender,
-    body: m.body,
-    kind: (m.kind === "image" ? "image" : "text") as "text" | "image",
-    ts: m.ts,
-    edited_at: m.edited_at ?? null,
-    deleted: m.deleted,
-    deleted_by: m.deleted_by ?? null,
-    deleted_at: m.deleted_at ?? null,
-  };
-}
-
-export function useDMMessages(me: string | undefined, partner: string | undefined): DMMessage[] {
-  const channelId = me && partner ? dmChannelId(me, partner) : undefined;
-  const raw = useGunChat("dm", channelId);
-  const [optTick, setOptTick] = useState(0);
-
-  useEffect(() => {
-    const bump = () => setOptTick((n) => n + 1);
-    optimisticSubs.add(bump);
-    return () => { optimisticSubs.delete(bump); };
-  }, []);
-
-  useEffect(() => {
-    if (!channelId || !raw?.length) return;
-    const optimistic = optimisticByChannel.get(channelId) ?? [];
-    if (!optimistic.length) return;
-    const synced = new Set(raw.map((m) => m.id));
-    const next = optimistic.filter((m) => !synced.has(m.id));
-    if (next.length === optimistic.length) return;
-    if (next.length) optimisticByChannel.set(channelId, next);
-    else optimisticByChannel.delete(channelId);
-    bumpOptimistic();
-  }, [channelId, raw]);
-
-  const cached = channelId ? loadMsgCache(channelId) : [];
-  const gunMsgs = (raw ?? []).map(toDmMessage);
-  const optimistic = channelId ? (optimisticByChannel.get(channelId) ?? []) : [];
-  void optTick;
-  const merged = useMemo(() => {
-    const byId = new Map<string, DMMessage>();
-    for (const m of [...cached, ...gunMsgs, ...optimistic]) byId.set(m.id, m);
-    return [...byId.values()].sort((a, b) => a.ts - b.ts);
-  }, [cached, gunMsgs, optimistic, optTick]);
-
-  useEffect(() => {
-    if (!channelId || merged.length === 0) return;
-    saveMsgCache(channelId, merged);
-  }, [channelId, merged]);
-
-  return merged;
-}
-
-function dmPreview(body: string, kind: "text" | "image") {
-  if (kind === "image") return "📷 Photo";
-  return body.length > 80 ? `${body.slice(0, 80)}…` : body;
-}
-
-export async function sendDM(
-  me: string,
-  partner: string,
-  body: string,
-  opts?: { kind?: "text" | "image" },
-) {
-  if (!GUN_ENABLED) return;
-  if (me.toLowerCase() === partner.toLowerCase()) {
-    throw new Error("Cannot message yourself");
-  }
-  const kind = opts?.kind ?? "text";
-  const channelId = dmChannelId(me, partner);
-  const id = crypto.randomUUID();
-  const ts = Date.now();
-  const optimistic = toDmMessage({
-    id,
-    sender: me.toLowerCase(),
-    body,
-    kind,
-    ts,
+const listThreads = createServerFn({ method: "POST" })
+  .inputValidator((d: { me: string }) => d)
+  .handler(async ({ data }) => {
+    const me = cleanAddress(data.me);
+    const { data: rows, error } = await supabaseAdmin()
+      .from("dm_threads")
+      .select("channel_id, owner_address, partner_address, last_body, last_ts, last_sender")
+      .eq("owner_address", me)
+      .order("last_ts", { ascending: false })
+      .limit(100);
+    if (error) throw new Error(error.message);
+    return (rows ?? []).map((r: any) => ({
+      channelId: r.channel_id,
+      partner: r.partner_address,
+      lastBody: r.last_body ?? "",
+      lastTs: r.last_ts ? +new Date(r.last_ts) : 0,
+      lastSender: r.last_sender ?? "",
+    }));
   });
-  const pending = optimisticByChannel.get(channelId) ?? [];
-  optimisticByChannel.set(channelId, [...pending, optimistic]);
-  bumpOptimistic();
-  persistDmMessage(channelId, optimistic);
-  try {
-    await gunSend("dm", channelId, {
-      id,
-      sender: me.toLowerCase(),
+
+const listMessages = createServerFn({ method: "POST" })
+  .inputValidator((d: { me: string; partner: string }) => d)
+  .handler(async ({ data }) => {
+    const me = cleanAddress(data.me);
+    const partner = cleanAddress(data.partner);
+    const channelId = dmChannelId(me, partner);
+    const { data: rows, error } = await supabaseAdmin()
+      .from("dm_messages")
+      .select("id, sender_address, body, kind, created_at, edited_at, deleted, deleted_by, deleted_at")
+      .eq("channel_id", channelId)
+      .order("created_at", { ascending: true })
+      .limit(300);
+    if (error) throw new Error(error.message);
+    return (rows ?? []).map((r: any) => ({
+      id: r.id,
+      sender: r.sender_address,
+      body: r.deleted ? "" : (r.body ?? ""),
+      kind: r.kind === "image" ? "image" : "text",
+      ts: r.created_at ? +new Date(r.created_at) : 0,
+      edited_at: r.edited_at ? +new Date(r.edited_at) : null,
+      deleted: !!r.deleted,
+      deleted_by: r.deleted_by ?? null,
+      deleted_at: r.deleted_at ? +new Date(r.deleted_at) : null,
+    }));
+  });
+
+const upsertThread = async (
+  owner: string,
+  partner: string,
+  channelId: string,
+  lastBody: string,
+  lastSender: string,
+) => {
+  const { error } = await supabaseAdmin().from("dm_threads").upsert({
+    channel_id: channelId,
+    owner_address: owner,
+    partner_address: partner,
+    last_body: lastBody,
+    last_sender: lastSender,
+    last_ts: new Date().toISOString(),
+  }, { onConflict: "owner_address,channel_id" });
+  if (error) throw new Error(error.message);
+};
+
+const sendMessage = createServerFn({ method: "POST" })
+  .inputValidator((d: { me: string; partner: string; body: string; kind?: "text" | "image" }) => d)
+  .handler(async ({ data }) => {
+    const me = cleanAddress(data.me);
+    const partner = cleanAddress(data.partner);
+    if (me === partner) throw new Error("Cannot message yourself");
+    await Promise.all([ensureAccount(me), ensureAccount(partner)]);
+    const kind = data.kind === "image" ? "image" : "text";
+    const body = String(data.body ?? "").trim();
+    if (!body) throw new Error("Message is empty.");
+    const channelId = dmChannelId(me, partner);
+    const { data: msg, error } = await supabaseAdmin().from("dm_messages").insert({
+      channel_id: channelId,
+      sender_address: me,
       body,
       kind,
-      ts,
-    });
-    const preview = dmPreview(body, kind);
-    const gun = await getGun();
-    if (!gun) throw new Error("Gun relay unavailable");
-    const threadPut = {
-      channelId,
-      partner: "",
-      lastBody: preview,
-      lastTs: ts,
-      lastSender: me.toLowerCase(),
-    };
+    }).select("id, created_at").single();
+    if (error) throw new Error(error.message);
+    const last = preview(body, kind);
     await Promise.all([
-      gunPutAck(gun.get(NS).get("threads").get(me.toLowerCase()).get(channelId), {
-        ...threadPut,
-        partner: partner.toLowerCase(),
-      }),
-      gunPutAck(gun.get(NS).get("threads").get(partner.toLowerCase()).get(channelId), {
-        ...threadPut,
-        partner: me.toLowerCase(),
-      }),
+      upsertThread(me, partner, channelId, last, me),
+      upsertThread(partner, me, channelId, last, me),
     ]);
-  } catch (e) {
-    const next = (optimisticByChannel.get(channelId) ?? []).filter((m) => m.id !== id);
-    if (next.length) optimisticByChannel.set(channelId, next);
-    else optimisticByChannel.delete(channelId);
-    saveMsgCache(channelId, loadMsgCache(channelId).filter((m) => m.id !== id));
-    bumpOptimistic();
-    throw e;
-  }
-}
+    return { id: (msg as any).id, ts: +(new Date((msg as any).created_at)) };
+  });
+
+const createThread = createServerFn({ method: "POST" })
+  .inputValidator((d: { me: string; partner: string }) => d)
+  .handler(async ({ data }) => {
+    const me = cleanAddress(data.me);
+    const partner = cleanAddress(data.partner);
+    if (me === partner) throw new Error("Cannot message yourself");
+    await Promise.all([ensureAccount(me), ensureAccount(partner)]);
+    const channelId = dmChannelId(me, partner);
+    await Promise.all([
+      upsertThread(me, partner, channelId, "", me),
+      upsertThread(partner, me, channelId, "", me),
+    ]);
+    return channelId;
+  });
+
+const deleteMessage = createServerFn({ method: "POST" })
+  .inputValidator((d: { me: string; partner: string; id: string }) => d)
+  .handler(async ({ data }) => {
+    const me = cleanAddress(data.me);
+    const partner = cleanAddress(data.partner);
+    const channelId = dmChannelId(me, partner);
+    const { error } = await supabaseAdmin().from("dm_messages")
+      .update({ deleted: true, deleted_by: me, deleted_at: new Date().toISOString(), body: "" })
+      .eq("id", data.id)
+      .eq("channel_id", channelId)
+      .eq("sender_address", me);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+const editMessage = createServerFn({ method: "POST" })
+  .inputValidator((d: { me: string; partner: string; id: string; body: string }) => d)
+  .handler(async ({ data }) => {
+    const me = cleanAddress(data.me);
+    const partner = cleanAddress(data.partner);
+    const channelId = dmChannelId(me, partner);
+    const body = data.body.trim();
+    const { error } = await supabaseAdmin().from("dm_messages")
+      .update({ body, edited_at: new Date().toISOString() })
+      .eq("id", data.id)
+      .eq("channel_id", channelId)
+      .eq("sender_address", me)
+      .eq("deleted", false);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+const removeThread = createServerFn({ method: "POST" })
+  .inputValidator((d: { me: string; partner: string }) => d)
+  .handler(async ({ data }) => {
+    const me = cleanAddress(data.me);
+    const partner = cleanAddress(data.partner);
+    const { error } = await supabaseAdmin().from("dm_threads")
+      .delete()
+      .eq("owner_address", me)
+      .eq("channel_id", dmChannelId(me, partner));
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
 
 export function useDMThreads(me: string | undefined): DMThread[] {
-  const [threads, setThreads] = useState<DMThread[]>(() =>
-    me ? loadThreadCache(me) : [],
-  );
+  const [threads, setThreads] = useState<DMThread[]>([]);
   const [readTick, setReadTick] = useState(0);
 
   useEffect(() => {
     const onRead = () => setReadTick((n) => n + 1);
-    window.addEventListener("gun-dm-read", onRead);
-    return () => window.removeEventListener("gun-dm-read", onRead);
+    window.addEventListener("dm-read", onRead);
+    return () => window.removeEventListener("dm-read", onRead);
   }, []);
 
   useEffect(() => {
-    if (!GUN_ENABLED || !me) return;
+    if (!me) { setThreads([]); return; }
     let cancel = false;
-    const map = new Map<string, DMThread>();
-
-    (async () => {
-      const gun = await getGun();
-      if (!gun || cancel) return;
-      const applyThread = (data: any, key: string) => {
-        if (key === "_") return;
-        if (!data || typeof data !== "object" || !data.partner) {
-          map.delete(key);
-        } else {
-          const channelId = data.channelId ?? key;
-          const partner = data.partner as string;
-          const lastTs = Number(data.lastTs ?? 0);
-          const lastSender = (data.lastSender ?? "") as string;
-          map.set(key, {
-            channelId,
-            partner,
-            lastBody: data.lastBody ?? "",
-            lastTs,
-            lastSender,
-            unread: unreadFor(me, channelId, lastSender, lastTs, partner),
-          });
-        }
-        if (!cancel) {
-          const next = [...map.values()].sort((a, b) => b.lastTs - a.lastTs);
-          setThreads(next);
-          saveThreadCache(me, next);
-        }
-      };
-
-      gun.get(NS).get("threads").get(me.toLowerCase()).map().once(applyThread);
-      gun.get(NS).get("threads").get(me.toLowerCase()).map().on(applyThread);
-    })();
-    return () => { cancel = true; };
+    const refresh = async () => {
+      const rows = await listThreads({ data: { me } }).catch(() => []);
+      if (cancel) return;
+      setThreads(rows.map((r: any) => ({
+        ...r,
+        unread: r.lastSender !== me.toLowerCase() && r.lastTs > readUpTo(me, r.channelId) ? 1 : 0,
+      })));
+    };
+    void refresh();
+    const id = setInterval(refresh, 4_000);
+    return () => { cancel = true; clearInterval(id); };
   }, [me, readTick]);
 
   return threads;
 }
 
-export async function startDMThread(me: string, partner: string) {
-  if (!GUN_ENABLED) return null;
-  if (me.toLowerCase() === partner.toLowerCase()) {
-    throw new Error("Cannot message yourself");
-  }
-  const channelId = dmChannelId(me, partner);
-  const ts = Date.now();
-  const gun = await getGun();
-  if (!gun) return null;
-  const row = { channelId, partner: partner.toLowerCase(), lastBody: "", lastTs: ts, lastSender: me.toLowerCase() };
-  await Promise.all([
-    gunPutAck(gun.get(NS).get("threads").get(me.toLowerCase()).get(channelId), row),
-    gunPutAck(gun.get(NS).get("threads").get(partner.toLowerCase()).get(channelId), {
-      ...row,
-      partner: me.toLowerCase(),
-    }),
-  ]);
-  return channelId;
+export function useDMMessages(me: string | undefined, partner: string | undefined): DMMessage[] {
+  const [messages, setMessages] = useState<DMMessage[]>([]);
+  const channelId = useMemo(() => me && partner ? dmChannelId(me, partner) : "", [me, partner]);
+  useEffect(() => {
+    if (!me || !partner) { setMessages([]); return; }
+    let cancel = false;
+    const refresh = async () => {
+      const rows = await listMessages({ data: { me, partner } }).catch(() => []);
+      if (!cancel) setMessages(rows as DMMessage[]);
+    };
+    void refresh();
+    const id = setInterval(refresh, 3_000);
+    return () => { cancel = true; clearInterval(id); };
+  }, [me, partner, channelId]);
+  return messages;
 }
 
-export async function deleteDMMessage(
-  me: string,
-  partner: string,
-  msg: Pick<DMMessage, "id" | "sender" | "ts">,
-) {
-  if (!GUN_ENABLED) return;
-  const channelId = dmChannelId(me, partner);
-  const mine = msg.sender.toLowerCase() === me.toLowerCase();
-  if (!mine) throw new Error("Can only delete your own messages");
-  await gunDeleteMessage("dm", channelId, {
-    id: msg.id,
-    sender: msg.sender,
-    ts: msg.ts,
-    kind: "text",
-  }, me);
+export async function sendDM(me: string, partner: string, body: string, opts?: { kind?: "text" | "image" }) {
+  await sendMessage({ data: { me, partner, body, kind: opts?.kind ?? "text" } });
+}
+
+export async function startDMThread(me: string, partner: string) {
+  return createThread({ data: { me, partner } });
+}
+
+export async function deleteDMMessage(me: string, partner: string, msg: Pick<DMMessage, "id">) {
+  await deleteMessage({ data: { me, partner, id: msg.id } });
 }
 
 export async function editDMMessage(
   me: string,
   partner: string,
-  msg: Pick<DMMessage, "id" | "sender" | "ts">,
+  msg: Pick<DMMessage, "id">,
   newBody: string,
 ) {
-  if (!GUN_ENABLED) return;
-  if (msg.sender.toLowerCase() !== me.toLowerCase()) {
-    throw new Error("Can only edit your own messages");
-  }
-  const channelId = dmChannelId(me, partner);
-  await gunEditMessage("dm", channelId, {
-    id: msg.id,
-    sender: msg.sender,
-    ts: msg.ts,
-    kind: "text",
-  }, newBody.trim());
+  await editMessage({ data: { me, partner, id: msg.id, body: newBody } });
 }
 
-/** Remove a DM thread from your inbox (messages stay on Gun for the other party). */
 export async function deleteDMThread(me: string, partner: string) {
-  if (!GUN_ENABLED) return;
-  const channelId = dmChannelId(me, partner);
-  const gun = await getGun();
-  if (!gun) return;
-  await gunPutAck(gun.get(NS).get("threads").get(me.toLowerCase()).get(channelId), null);
+  await removeThread({ data: { me, partner } });
 }

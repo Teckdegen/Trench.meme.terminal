@@ -1120,6 +1120,8 @@ alter table referral_earnings      enable row level security;
 alter table user_blocklist_wallets enable row level security;
 alter table user_blocklist_tokens  enable row level security;
 alter table para_wallets           enable row level security;
+alter table dm_threads             enable row level security;
+alter table dm_messages            enable row level security;
 alter table points_ledger          enable row level security;
 alter table redemptions            enable row level security;
 alter table siwe_nonces            enable row level security;
@@ -1593,11 +1595,47 @@ create index if not exists exec_queue_source_idx
   on execution_queue (source, source_id);
 
 ------------------------------------------------------------
+-- DMs — Supabase-backed private inbox transport.
+------------------------------------------------------------
+create table if not exists dm_threads (
+  owner_address   text not null references accounts(address) on delete cascade,
+  channel_id      text not null,
+  partner_address text not null references accounts(address) on delete cascade,
+  last_body       text default '',
+  last_ts         timestamptz default now(),
+  last_sender     text,
+  created_at      timestamptz default now(),
+  updated_at      timestamptz default now(),
+  primary key (owner_address, channel_id)
+);
+create index if not exists dm_threads_owner_ts_idx
+  on dm_threads (owner_address, last_ts desc);
+drop trigger if exists dm_threads_updated on dm_threads;
+create trigger dm_threads_updated before update on dm_threads
+  for each row execute function set_updated_at();
+
+create table if not exists dm_messages (
+  id             uuid primary key default gen_random_uuid(),
+  channel_id     text not null,
+  sender_address text not null references accounts(address) on delete cascade,
+  body           text not null default '',
+  kind           text not null default 'text' check (kind in ('text','image')),
+  created_at     timestamptz default now(),
+  edited_at      timestamptz,
+  deleted        boolean not null default false,
+  deleted_by     text,
+  deleted_at     timestamptz
+);
+create index if not exists dm_messages_channel_ts_idx
+  on dm_messages (channel_id, created_at);
+
+------------------------------------------------------------
 -- Legacy cleanup (existing projects only — safe no-op on fresh DB)
--- ALL cabal data (metadata, membership, rooms, watchlist) + DMs + chat
+-- Cabal data (metadata, membership, rooms, watchlist) + cabal chat
 -- messages live on Gun.js now. The ONLY cabal-related tables that remain
 -- in Postgres are the encryption-infra tables created above:
 -- user_encryption_keys and cabal_key_grants.
+-- DMs are Supabase-backed via dm_threads + dm_messages above.
 ------------------------------------------------------------
 drop table if exists room_messages cascade;
 drop table if exists room_invites cascade;
@@ -1605,8 +1643,6 @@ drop table if exists room_members cascade;
 drop table if exists messages cascade;
 drop table if exists threads cascade;
 drop table if exists rooms cascade;
-drop table if exists dm_messages cascade;
-drop table if exists dm_threads cascade;
 drop table if exists cabal_watchlist cascade;
 drop table if exists cabal_rooms cascade;
 drop table if exists cabal_members cascade;
