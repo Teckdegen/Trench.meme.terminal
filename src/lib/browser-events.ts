@@ -61,4 +61,6 @@ export class EventEmitter {
   }
 }
 
-export default { EventEmitter };
+(EventEmitter as any).EventEmitter = EventEmitter;
+
+export default EventEmitter;
