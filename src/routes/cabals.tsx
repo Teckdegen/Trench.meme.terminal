@@ -1052,6 +1052,9 @@ function MessageBody({
   const mine = me && m.sender_address?.toLowerCase() === me.toLowerCase();
   const canDelete = mine || isOwner;
   const canEdit = mine && m.kind === "text" && !m.deleted;
+  const body = typeof m.body === "string" && /^enc?:/.test(m.body)
+    ? "(message couldn't be decrypted)"
+    : m.body;
   return (
     <div className={`relative ${indent ? "" : ""}`}>
       {(m as any).reply_to && (m as any).reply_preview && !m.deleted && (
@@ -1064,7 +1067,7 @@ function MessageBody({
         <p className="text-[14px] italic text-muted-foreground">Message deleted</p>
       ) : (
         <p className="text-[15px] leading-snug text-foreground/90 break-words whitespace-pre-wrap">
-          {renderMarkdownLite(m.body)}
+          {renderMarkdownLite(body)}
           {m.edited_at && (
             <span className="text-[10px] text-muted-foreground ml-1.5">(edited)</span>
           )}

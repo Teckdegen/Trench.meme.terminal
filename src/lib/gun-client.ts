@@ -118,7 +118,7 @@ export async function decryptText(channelId: string, stored: string): Promise<st
     const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, data);
     return dec.decode(plain);
   } catch {
-    return stored;
+    return "";
   }
 }
 

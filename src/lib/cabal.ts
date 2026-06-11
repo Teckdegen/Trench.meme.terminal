@@ -630,7 +630,11 @@ export async function sendCabalChat(
   }
   // Ensure the cabal key is loaded so gunSend's encryptText uses the real
   // shared key, not the PBKDF2 fallback.
-  try { await loadCabalKey(cabalId, me); } catch { /* not a member */ }
+  let cabalKey: CryptoKey | null = null;
+  try { cabalKey = await loadCabalKey(cabalId, me); } catch { /* not a member */ }
+  if (!cabalKey) {
+    throw new Error("Cabal encryption key is not ready. Ask the owner to retry pending invites, then reopen the cabal.");
+  }
   await gunSend("cabal", cabalId, {
     id: crypto.randomUUID(),
     sender: me.toLowerCase(),
