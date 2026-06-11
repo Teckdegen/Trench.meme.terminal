@@ -116,15 +116,18 @@ async function paraClientFor(owner: string) {
   }
 
   const account = createParaViemAccount({ para, address: owner as Address });
-  return createParaViemClient({
+  const client = createParaViemClient({
     para,
-    noAccount: true,
     walletClientConfig: {
       account,
       chain: monadChain as any,
       transport: monadTransport,
     },
   });
+  if (account.address?.toLowerCase?.() !== owner.toLowerCase()) {
+    throw new Error(`Para session wallet mismatch. Expected ${owner.slice(0, 6)}...${owner.slice(-4)}, got ${account.address}. Sign out and back in.`);
+  }
+  return { client, account };
 }
 
 export async function sendViaPara(owner: string, opts: {
@@ -154,8 +157,9 @@ export async function sendViaPara(owner: string, opts: {
     const needed = (opts.value ?? 0n) + (gas && gasPrice ? gas * gasPrice : 0n);
     if (bal < needed) throw new Error("Insufficient MON for amount plus gas.");
   }
-  const client = await paraClientFor(owner);
+  const { client, account } = await paraClientFor(owner);
   const tx = {
+    account,
     chain: monadChain as any,
     to: opts.to,
     data: opts.data,
@@ -163,12 +167,16 @@ export async function sendViaPara(owner: string, opts: {
     gas,
   };
   try {
-    return await client.sendTransaction(tx);
+    const request = await client.prepareTransactionRequest(tx);
+    const signed = await client.signTransaction(request);
+    return await pub.sendRawTransaction({ serializedTransaction: signed });
   } catch (e: any) {
     const msg = String(e?.shortMessage ?? e?.message ?? e);
     if (!/rpc request failed|network|timeout|fetch/i.test(msg)) throw e;
     await new Promise((resolve) => setTimeout(resolve, 900));
-    return await client.sendTransaction(tx);
+    const request = await client.prepareTransactionRequest(tx);
+    const signed = await client.signTransaction(request);
+    return await pub.sendRawTransaction({ serializedTransaction: signed });
   }
 }
 
