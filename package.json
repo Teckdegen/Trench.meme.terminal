@@ -26,6 +26,7 @@
     "@getpara/server-sdk": "3.1.0",
     "@getpara/viem-v2-integration": "3.1.0",
     "@farcaster/mini-app-solana": "^1.0.5",
+    "@farcaster/miniapp-sdk": "^0.3.0",
     "@radix-ui/react-accordion": "^1.2.12",
     "@radix-ui/react-alert-dialog": "^1.1.15",
     "@radix-ui/react-aspect-ratio": "^1.1.8",
