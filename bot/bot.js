@@ -15,8 +15,13 @@ import { Para, Environment } from "@getpara/server-sdk";
 import { createParaViemClient } from "@getpara/viem-v2-integration";
 
 const env = process.env;
-const REQUIRED = ["VITE_SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "PARA_API_KEY"];
+const SUPABASE_URL = env.SUPABASE_URL || env.VITE_SUPABASE_URL;
+const SUPABASE_SERVICE_ROLE_KEY = env.SUPABASE_SERVICE_ROLE_KEY;
+const PARA_API_KEY = env.PARA_API_KEY || env.VITE_PARA_API_KEY;
 const OPTIONAL = [
+  "SUPABASE_URL",
+  "VITE_SUPABASE_URL",
+  "VITE_PARA_API_KEY",
   "PARA_API_SECRET",
   "MONAD_RPC_URL",
   "FEE_WALLET_ADDRESS",
@@ -32,9 +37,14 @@ const OPTIONAL = [
   "GUN_MAX_MESSAGE_AGE_DAYS",
 ];
 
-const missing = REQUIRED.filter((key) => !env[key]);
+const missing = [
+  !SUPABASE_URL ? "SUPABASE_URL or VITE_SUPABASE_URL" : null,
+  !SUPABASE_SERVICE_ROLE_KEY ? "SUPABASE_SERVICE_ROLE_KEY" : null,
+  !PARA_API_KEY ? "PARA_API_KEY or VITE_PARA_API_KEY" : null,
+].filter(Boolean);
 if (missing.length) {
-  console.error("[bot] fatal: missing required env vars:", missing.join(", "));
+  console.error("[bot] fatal: missing required Railway variables:", missing.join(", "));
+  console.error("[bot] set these in Railway > Service > Variables, then redeploy.");
   process.exit(1);
 }
 
@@ -50,7 +60,6 @@ const GUN_DATA_DIR = env.GUN_DATA_DIR || "./gun-data";
 const GUN_ALLOW_ORIGIN = env.GUN_ALLOW_ORIGIN || "*";
 const RPC = env.MONAD_RPC_URL || env.VITE_MONAD_RPC_URL || "https://rpc.monad.xyz";
 const DIROL_BASE = env.DIROL_API_BASE || "https://api.dirol.io/api/v1";
-const PARA_API_KEY = env.PARA_API_KEY;
 const PARA_API_SECRET = env.PARA_API_SECRET || "";
 const FEE_WALLET = env.FEE_WALLET_ADDRESS || "";
 const NADFUN_ROUTER = "0x0B79d71AE99528D1dB24A4148b5f4F865cc2b137";
@@ -61,7 +70,7 @@ if (!PARA_API_SECRET) {
   console.warn("[bot] PARA_API_SECRET is empty. Para signing uses PARA_API_KEY here, but keep the secret in Railway.");
 }
 
-const sb = createClient(env.VITE_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
+const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
   realtime: { transport: WS },
 });
