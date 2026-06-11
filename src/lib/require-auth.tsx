@@ -22,7 +22,7 @@ export function useRequireAuth() {
 
   useEffect(() => {
     if (paraHooks) return;
-    import("@getpara/react-sdk").then((m: any) => setParaHooks(m)).catch(() => {});
+    import("@getpara/react-sdk-lite").then((m: any) => setParaHooks(m)).catch(() => {});
   }, [paraHooks]);
 
   // When the user finishes auth, drain any pending action.
@@ -56,7 +56,7 @@ export function RequireAuthModalHost() {
   const [hooks, setHooks] = useState<any>(null);
 
   useEffect(() => {
-    import("@getpara/react-sdk").then((m: any) => setHooks(m)).catch(() => {});
+    import("@getpara/react-sdk-lite").then((m: any) => setHooks(m)).catch(() => {});
   }, []);
 
   if (me || !hooks) return null;

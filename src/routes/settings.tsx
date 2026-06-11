@@ -141,7 +141,7 @@ function SignOutSection() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    import("@getpara/react-sdk").then(setMod).catch(() => {});
+    import("@getpara/react-sdk-lite").then(setMod).catch(() => {});
   }, []);
 
   const signOut = async () => {

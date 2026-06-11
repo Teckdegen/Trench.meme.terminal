@@ -12,7 +12,7 @@ export function ConnectWalletButton({ compact = false }: { compact?: boolean }) 
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    import("@getpara/react-sdk").then(setMod).catch(() => {});
+    import("@getpara/react-sdk-lite").then(setMod).catch(() => {});
   }, []);
 
   const copy = () => {

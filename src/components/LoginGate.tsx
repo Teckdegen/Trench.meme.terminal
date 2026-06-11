@@ -46,7 +46,7 @@ export function LoginGate() {
   // Lazy-load Para hooks
   useEffect(() => {
     let cancel = false;
-    import("@getpara/react-sdk").then((m: any) => { if (!cancel) setHooks(m); }).catch(() => {});
+    import("@getpara/react-sdk-lite").then((m: any) => { if (!cancel) setHooks(m); }).catch(() => {});
     return () => { cancel = true; };
   }, []);
 

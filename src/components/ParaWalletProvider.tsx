@@ -1,4 +1,4 @@
-import "@getpara/react-sdk/styles.css";
+import "@getpara/react-sdk-lite/styles.css";
 
 import { Suspense, useEffect, useState, type ReactNode } from "react";
 import { setMe, useMe } from "@/lib/useMe";
@@ -32,7 +32,7 @@ function ParaInner({ apiKey, children }: { apiKey: string; children: ReactNode }
   useEffect(() => {
     (async () => {
       try {
-        const m: any = await import("@getpara/react-sdk");
+        const m: any = await import("@getpara/react-sdk-lite");
         setMod(m);
       } catch (e) {
         console.warn("[para] SDK failed to load", e);
