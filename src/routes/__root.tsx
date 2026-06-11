@@ -124,6 +124,21 @@ function RootShell({ children }: { children: React.ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const isWasmCompileFailure = (reason: unknown) => {
+      const message = reason instanceof Error ? reason.message : String(reason ?? "");
+      return reason instanceof WebAssembly.CompileError || message.includes("WebAssembly.Module()");
+    };
+    const onUnhandledRejection = (event: PromiseRejectionEvent) => {
+      if (!isWasmCompileFailure(event.reason)) return;
+      event.preventDefault();
+      console.warn("[wasm] optional crypto wasm failed to initialize; continuing with JS/WebCrypto fallbacks.");
+    };
+    window.addEventListener("unhandledrejection", onUnhandledRejection);
+    return () => window.removeEventListener("unhandledrejection", onUnhandledRejection);
+  }, []);
+
   // Prime the Web Audio context on first user interaction so trade sounds
   // can play without a "user gesture required" error later.
   useEffect(() => {

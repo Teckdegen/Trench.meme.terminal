@@ -55,32 +55,45 @@ type TimeoutWithEach = typeof globalThis.setTimeout & {
   ) => void;
 };
 
+type GunTimerEach = NonNullable<TimeoutWithEach["each"]>;
+
+const gunTimerEach: GunTimerEach = (list, cb, opt) => {
+  if (typeof cb !== "function") return;
+  const source = (list ?? {}) as Record<string, unknown> | unknown[];
+  const keys = Array.isArray(source)
+    ? source.map((_, i) => i)
+    : Object.keys(source);
+  const wait = typeof opt === "number" ? opt : opt?.wait ?? 0;
+  const chunk = typeof opt === "object" ? opt?.chunk ?? 256 : 256;
+  let i = 0;
+
+  const run = () => {
+    const end = Math.min(i + chunk, keys.length);
+    for (; i < end; i++) {
+      const key = keys[i];
+      cb((source as any)[key], key);
+    }
+    if (i < keys.length) globalThis.setTimeout(run, wait);
+  };
+
+  run();
+};
+
 function installGunTimerCompat(): void {
   if (typeof window === "undefined") return;
   const timer = globalThis.setTimeout as TimeoutWithEach;
-  if (typeof timer.each === "function") return;
+  if (typeof timer.each !== "function") timer.each = gunTimerEach;
 
-  timer.each = (list, cb, opt) => {
-    if (typeof cb !== "function") return;
-    const source = (list ?? {}) as Record<string, unknown> | unknown[];
-    const keys = Array.isArray(source)
-      ? source.map((_, i) => i)
-      : Object.keys(source);
-    const wait = typeof opt === "number" ? opt : opt?.wait ?? 0;
-    const chunk = typeof opt === "object" ? opt?.chunk ?? 256 : 256;
-    let i = 0;
-
-    const run = () => {
-      const end = Math.min(i + chunk, keys.length);
-      for (; i < end; i++) {
-        const key = keys[i];
-        cb((source as any)[key], key);
-      }
-      if (i < keys.length) timer(run, wait);
-    };
-
-    run();
-  };
+  // Some browser extensions/polyfills wrap setTimeout after app startup.
+  // Gun calls `setTimeout.each(...)` directly, so give wrapped timer
+  // functions the same helper through the function prototype as a fallback.
+  const fnProto = Function.prototype as Function & { each?: GunTimerEach };
+  if (typeof fnProto.each !== "function") {
+    Object.defineProperty(fnProto, "each", {
+      configurable: true,
+      value: gunTimerEach,
+    });
+  }
 }
 
 export async function getGun(): Promise<any | null> {
