@@ -24,7 +24,7 @@ const monadChain = {
   rpcUrls: { default: { http: [RPC] } },
 } as const;
 
-const NADFUN_ROUTER = "0x0B79d71AE99528D1dB24A4148b5f4F865cc2b137" as Address;
+const NADFUN_ROUTER = "0x8986C8fD44eb85294A725a7e61AF35E76bA26F91" as Address;
 const WMON = "0x3bd359C1119dA7Da1D913D1C4D2B7c461115433A" as Address;
 const DIROL_BASE = "https://api.dirol.io/api/v1";
 
