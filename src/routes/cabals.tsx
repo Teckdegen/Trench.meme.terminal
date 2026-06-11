@@ -120,7 +120,10 @@ function CabalsPage() {
       const row = await joinCabalByCode(code, me);
       if (row) { setActiveId(row.id); setJoining(false); setJoinError(null); }
       else setJoinError("Invite code not found");
-    } catch { setJoinError("Could not join"); }
+    } catch (e) {
+      console.error(e);
+      setJoinError(e instanceof Error ? e.message : "Could not join");
+    }
   };
 
   const onLeave = async () => {
@@ -1618,6 +1621,7 @@ function JoinCodeModal({ error, onClose, onJoin }: {
   error: string | null; onClose: () => void; onJoin: (code: string) => void;
 }) {
   const [code, setCode] = useState("");
+  const cleanCode = (raw: string) => raw.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(-8);
   return (
     <ModalShell onClose={onClose} className="sm:max-w-sm">
         <div className="px-4 py-3 flex items-center gap-3 border-b border-white/5">
@@ -1648,10 +1652,9 @@ function JoinCodeModal({ error, onClose, onJoin }: {
           <input
             autoFocus
             value={code}
-            onChange={(e) => setCode(e.target.value.toUpperCase())}
+            onChange={(e) => setCode(cleanCode(e.target.value))}
             onKeyDown={(e) => e.key === "Enter" && code.trim() && onJoin(code)}
             placeholder="XXXXXXXX"
-            maxLength={8}
             className="w-full h-12 rounded-xl bg-white/[0.04] border border-white/5 px-4 text-center font-mono tracking-[0.4em] text-base focus:outline-none focus:border-primary/40 focus:bg-white/[0.06] transition-colors"
           />
           {error && <p className="text-xs text-down mt-2 text-center">{error}</p>}

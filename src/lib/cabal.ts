@@ -101,6 +101,28 @@ function genInviteCode() {
   return s;
 }
 
+function normalizeInviteCode(code: string) {
+  return String(code ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(-8);
+}
+
+async function gunPutBestEffort(node: any, payload: unknown): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      resolve();
+    }, 2_500);
+    node.put(payload, (ack: any) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (ack?.err) reject(new Error(String(ack.err)));
+      else resolve();
+    });
+  });
+}
+
 function shortAddr(addr: string) {
   return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
 }
@@ -288,15 +310,36 @@ export async function joinCabalByCode(code: string, me: string): Promise<CabalMe
   if (!GUN_ENABLED) return null;
   const gun = await getGun();
   if (!gun) return null;
+  const cleanCode = normalizeInviteCode(code);
+  if (!cleanCode) throw new Error("Enter a valid invite code");
   const cabalId = await new Promise<string | null>((res) => {
-    gun.get(NS).get("cabals").get("by-code").get(code.trim().toUpperCase()).once((id: string) => res(id ?? null));
+    gun.get(NS).get("cabals").get("by-code").get(cleanCode).once((id: string) => res(id ?? null));
   });
-  if (!cabalId) return null;
-  await joinCabal(cabalId, me, "member");
+  const resolvedId = cabalId || await findCabalIdByInviteCode(gun, cleanCode);
+  if (!resolvedId) return null;
+  await joinCabal(resolvedId, me, "member");
   const meta = await new Promise<CabalMeta | null>((res) => {
-    cabalNode(gun, cabalId).get("meta").once((d: CabalMeta) => res(d ?? null));
+    cabalNode(gun, resolvedId).get("meta").once((d: CabalMeta) => res(d ?? null));
   });
   return meta;
+}
+
+async function findCabalIdByInviteCode(gun: any, code: string): Promise<string | null> {
+  return await new Promise<string | null>((resolve) => {
+    let done = false;
+    const finish = (id: string | null) => {
+      if (done) return;
+      done = true;
+      resolve(id);
+    };
+    gun.get(NS).get("cabals").map().once((node: any, id: string) => {
+      if (done || id === "_" || id === "by-code" || id === "public" || !node) return;
+      cabalNode(gun, id).get("meta").once((meta: CabalMeta | null) => {
+        if (normalizeInviteCode(meta?.invite_code ?? "") === code) finish(id);
+      });
+    });
+    setTimeout(() => finish(null), 1_200);
+  });
 }
 
 export async function joinCabal(cabalId: string, me: string, role: CabalMember["role"] = "member") {
@@ -310,8 +353,8 @@ export async function joinCabal(cabalId: string, me: string, role: CabalMember["
     trade_feed_enabled: true,
     joined_at: Date.now(),
   };
-  await gunPutAck(cabalNode(gun, cabalId).get("members").get(addr), row);
-  await gunPutAck(gun.get(NS).get("users").get(addr).get("cabals").get(cabalId), {
+  await gunPutBestEffort(cabalNode(gun, cabalId).get("members").get(addr), row);
+  await gunPutBestEffort(gun.get(NS).get("users").get(addr).get("cabals").get(cabalId), {
     joined_at: row.joined_at,
     trade_feed_enabled: row.trade_feed_enabled,
   });
