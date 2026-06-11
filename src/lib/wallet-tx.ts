@@ -228,7 +228,7 @@ export async function sendMon(p: {
   const wei = BigInt(Math.floor(p.amountMon * 1e18));
   return client.sendTransaction({
     to: p.to, value: wei,
-    chain: MONAD_MAINNET, account: p.from,
+    chain: MONAD_MAINNET,
   } as any);
 }
 
@@ -246,6 +246,6 @@ export async function sendErc20(p: {
   });
   return client.sendTransaction({
     to: p.tokenAddress, data, value: 0n,
-    chain: MONAD_MAINNET, account: p.from,
+    chain: MONAD_MAINNET,
   } as any);
 }

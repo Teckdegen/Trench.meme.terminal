@@ -20,7 +20,6 @@ export async function getParaWalletClient(account: `0x${string}`): Promise<Walle
     return createParaViemClient({
       para,
       walletClientConfig: {
-        account,
         chain: MONAD_MAINNET,
         transport: http(import.meta.env.VITE_MONAD_RPC_URL || "https://rpc.monad.xyz"),
       },
