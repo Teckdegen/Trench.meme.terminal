@@ -1,10 +1,13 @@
 import tailwindcss from "@tailwindcss/vite";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import { defineConfig } from "vite";
+import { fileURLToPath, URL } from "node:url";
 import viteReact from "@vitejs/plugin-react";
 import { nitro } from "nitro/vite";
 import tsconfigPaths from "vite-tsconfig-paths";
 import wasm from "vite-plugin-wasm";
+
+const paraAaStub = fileURLToPath(new URL("./src/lib/para-aa-stub.ts", import.meta.url));
 
 export default defineConfig({
   plugins: [
@@ -43,6 +46,20 @@ export default defineConfig({
         ) return;
         warn(warning);
       },
+    },
+  },
+  resolve: {
+    alias: {
+      "@getpara/aa-alchemy": paraAaStub,
+      "@getpara/aa-biconomy": paraAaStub,
+      "@getpara/aa-cdp": paraAaStub,
+      "@getpara/aa-gelato": paraAaStub,
+      "@getpara/aa-pimlico": paraAaStub,
+      "@getpara/aa-porto": paraAaStub,
+      "@getpara/aa-rhinestone": paraAaStub,
+      "@getpara/aa-safe": paraAaStub,
+      "@getpara/aa-thirdweb": paraAaStub,
+      "@getpara/aa-zerodev": paraAaStub,
     },
   },
 });
