@@ -572,7 +572,7 @@ order by a.created_at;
 create table if not exists referrals (
   referee_address  text primary key references accounts(address) on delete cascade,
   referrer_address text not null references accounts(address) on delete cascade,
-  code             text not null references referral_codes(code) on delete cascade,
+  code             text not null references referral_codes(code) on update cascade on delete cascade,
   bonded_at        timestamptz default now()
 );
 create index if not exists referrals_referrer_idx on referrals (referrer_address);

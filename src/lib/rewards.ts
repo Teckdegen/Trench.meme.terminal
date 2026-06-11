@@ -300,6 +300,47 @@ export async function mintReferralCode(me: string) {
   return (data as { code?: string } | null)?.code ?? null;
 }
 
+export const updateMyReferralCode = createServerFn({ method: "POST" })
+  .inputValidator((d: { owner: string; code: string }) => d)
+  .handler(async ({ data }) => {
+    const sb = admin();
+    const owner = data.owner.toLowerCase();
+    const code = data.code.trim().toLowerCase();
+    if (!/^[a-z0-9]{3,20}$/.test(code)) {
+      return { ok: false, reason: "invalid" } as const;
+    }
+
+    await ensureRefereeAccount(sb, owner);
+
+    const { data: taken } = await sb
+      .from("referral_codes")
+      .select("owner_address")
+      .eq("code", code)
+      .maybeSingle();
+    if (taken && (taken as { owner_address: string }).owner_address.toLowerCase() !== owner) {
+      return { ok: false, reason: "taken" } as const;
+    }
+
+    const { data: existing } = await sb
+      .from("referral_codes")
+      .select("code")
+      .eq("owner_address", owner)
+      .maybeSingle();
+
+    const query = existing
+      ? sb.from("referral_codes").update({ code }).eq("owner_address", owner)
+      : sb.from("referral_codes").insert({ owner_address: owner, code });
+    const { error } = await query;
+    if (error) {
+      if ((error as { code?: string }).code === "23505") {
+        return { ok: false, reason: "taken" } as const;
+      }
+      throw new Error(error.message);
+    }
+
+    return { ok: true, code } as const;
+  });
+
 // ──────────────── Onboarding: bond a referrer ──────────────────────────
 // Called once at first-time login. The user either types in a code (e.g.
 // `trench042`) or skips, in which case we silently fall back to the

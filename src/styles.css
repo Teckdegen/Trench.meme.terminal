@@ -288,6 +288,19 @@ iframe[src*="app.getpara.com"] {
   --para-background-color: #050008;
   --para-surface-color: #090311;
   --para-text-color: #f5f3ff;
+  --para-color-background: #050008;
+  --para-color-foreground: #f8f5ff;
+  --para-color-card: #090311;
+  --para-color-card-foreground: #f8f5ff;
+  --para-color-popover: #090311;
+  --para-color-popover-foreground: #f8f5ff;
+  --para-color-muted: #14071f;
+  --para-color-muted-foreground: rgba(248, 245, 255, 0.72);
+  --para-color-border: rgba(168, 85, 247, 0.35);
+  --para-color-input: rgba(255, 255, 255, 0.08);
+  --para-color-ring: #a855f7;
+  --para-color-primary: #8b5cf6;
+  --para-color-primary-foreground: #ffffff;
   color-scheme: dark;
 }
 
@@ -296,4 +309,17 @@ iframe[src*="app.getpara.com"] {
 [class*="para\\:rounded"] {
   background-color: #050008 !important;
   color: #f5f3ff !important;
+}
+
+[class*="para:text-muted-foreground"],
+[class*="para\\:text-muted-foreground"] {
+  color: rgba(248, 245, 255, 0.72) !important;
+}
+
+[class*="para:text-foreground"],
+[class*="para\\:text-foreground"],
+[class*="para:fill-foreground"],
+[class*="para\\:fill-foreground"] {
+  color: #f8f5ff !important;
+  fill: #f8f5ff !important;
 }

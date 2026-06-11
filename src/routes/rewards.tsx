@@ -5,7 +5,7 @@ import { useMe } from "@/lib/useMe";
 import {
   usePointsBalance, usePointsLedger, useReferralStats, useRedemptions,
   useEarnedTotal,
-  requestRedemption, mintReferralCode,
+  requestRedemption, mintReferralCode, updateMyReferralCode,
   POINT_USD, MIN_REDEEM_POINTS, tierFor,
 } from "@/lib/rewards";
 // ArrowDownToLine is the ONLY icon allowed on this page — it lives on
@@ -73,6 +73,7 @@ function RewardsTab(p: {
     ? `${typeof window !== "undefined" ? window.location.origin : ""}/?ref=${refCode}`
     : "";
   const [claimOpen, setClaimOpen] = useState(false);
+  const [editCodeOpen, setEditCodeOpen] = useState(false);
 
   if (!me) {
     return (
@@ -143,6 +144,13 @@ function RewardsTab(p: {
             {refCode ? (
               <div className="mt-3 inline-flex items-center gap-2">
                 <CopyButton text={refLink} label="Copy link" />
+                <button
+                  type="button"
+                  onClick={() => setEditCodeOpen(true)}
+                  className="h-8 px-3 rounded-full bg-black/25 border border-white/10 text-white text-xs font-bold"
+                >
+                  Edit code
+                </button>
                 <span className="text-[11px] text-white/60">
                   {ref?.referredCount ?? 0} friends joined
                 </span>
@@ -215,6 +223,16 @@ function RewardsTab(p: {
       {/* Claim modal — opens from the action tile */}
       {claimOpen && (
         <ClaimModal me={me} balance={balance} onClose={() => setClaimOpen(false)} />
+      )}
+      {editCodeOpen && (
+        <ReferralCodeModal
+          me={me}
+          initialCode={refCode ?? ""}
+          onClose={() => setEditCodeOpen(false)}
+          onSaved={(next) => {
+            setCode(next);
+          }}
+        />
       )}
     </>
   );
@@ -468,6 +486,83 @@ function ClaimModal({
             Redemptions are settled by the bot worker once your tx is signed and broadcast.
           </p>
         </div>
+    </ModalShell>
+  );
+}
+
+function ReferralCodeModal({
+  me,
+  initialCode,
+  onClose,
+  onSaved,
+}: {
+  me: string;
+  initialCode: string;
+  onClose: () => void;
+  onSaved: (code: string) => void;
+}) {
+  const [draft, setDraft] = useState(initialCode);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const clean = draft.trim().toLowerCase();
+
+  const save = async () => {
+    if (!/^[a-z0-9]{3,20}$/.test(clean)) {
+      setErr("Use 3-20 letters or numbers.");
+      return;
+    }
+    setBusy(true);
+    setErr(null);
+    try {
+      const res = await updateMyReferralCode({ data: { owner: me, code: clean } });
+      if (res.ok) {
+        onSaved(res.code);
+        onClose();
+        return;
+      }
+      setErr(res.reason === "taken" ? "That code is already taken." : "Use 3-20 letters or numbers.");
+    } catch (e: any) {
+      setErr(e?.message ?? "Could not save code.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <ModalShell onClose={onClose} className="sm:max-w-sm">
+      <ModalHeader title="Your referral code" subtitle="Pick a code people can remember" onClose={onClose} />
+      <div className="px-5 pb-5 pt-2">
+        <input
+          value={draft}
+          onChange={(e) => setDraft(e.target.value.replace(/[^a-zA-Z0-9]/g, "").toLowerCase())}
+          onKeyDown={(e) => e.key === "Enter" && void save()}
+          autoFocus
+          maxLength={20}
+          className="w-full h-12 rounded-xl bg-white/[0.04] border border-white/10 px-4 text-[15px] font-mono tracking-wide focus:outline-none focus:border-primary/50"
+          placeholder="teckdegen"
+        />
+        <p className="mt-2 text-[11px] text-muted-foreground">
+          Your invite link will use this code. Letters and numbers only.
+        </p>
+        {err && <p className="mt-2 text-xs text-down">{err}</p>}
+        <div className="grid grid-cols-2 gap-2 mt-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-11 rounded-xl bg-white/5 hover:bg-white/10 text-sm font-bold"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={save}
+            disabled={busy || clean === initialCode || clean.length < 3}
+            className="h-11 rounded-xl lit-purple text-sm font-bold disabled:opacity-40"
+          >
+            {busy ? "Saving..." : "Save code"}
+          </button>
+        </div>
+      </div>
     </ModalShell>
   );
 }

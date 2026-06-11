@@ -69,8 +69,11 @@ function ParaInner({ apiKey, children }: { apiKey: string; children: ReactNode }
         },
         themeConfig: {
           mode: "dark",
+          backgroundColor: "#050008",
+          foregroundColor: "#f8f5ff",
           accentColor: "#a855f7",
           borderRadius: "lg",
+          foregroundMixRatio: 1,
         },
       }}
       paraModalConfig={{
@@ -82,8 +85,11 @@ function ParaInner({ apiKey, children }: { apiKey: string; children: ReactNode }
         logo: APP_LOGO,
         theme: {
           mode: "dark",
+          backgroundColor: "#050008",
+          foregroundColor: "#f8f5ff",
           accentColor: "#a855f7",
           borderRadius: "lg",
+          foregroundMixRatio: 1,
         },
         recoverySecretStepEnabled: true,
         twoFactorAuthEnabled: false,
