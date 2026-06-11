@@ -68,6 +68,9 @@ export const executeServerSwap = createServerFn({ method: "POST" })
     source?: "market" | "limit" | "copy";
   }) => d)
   .handler(async ({ data }) => {
+    // Transaction execution is intentionally server-only. The UI submits
+    // intent here, then waits for the Vercel/server function to sign and
+    // broadcast through Para REST. No browser transaction popup is involved.
     const { fireWithPara } = await import("./para-server-execute");
     return await fireWithPara({
       owner: data.owner.toLowerCase(),
@@ -119,6 +122,7 @@ export const withdrawMon = createServerFn({ method: "POST" })
     }
 
     try {
+      // MON withdrawals follow the same server-only Para REST path as swaps.
       const { sendViaPara } = await import("./para-server-execute");
       return await sendViaPara(owner, { to, value: amountWei });
     } catch (e: any) {

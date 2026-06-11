@@ -52,10 +52,18 @@ const ERC20_ABI = parseAbi([
 ]);
 
 function admin() {
+  assertServerRuntime();
   return supabaseAdmin();
 }
 
+function assertServerRuntime() {
+  if (typeof window !== "undefined") {
+    throw new Error("Para transaction execution is server-only. The UI must call the server function and wait for the result.");
+  }
+}
+
 function paraCreds() {
+  assertServerRuntime();
   const apiKey = (process.env.PARA_API_SECRET || process.env.PARA_REST_API_KEY || process.env.PARA_API_KEY || "").trim();
   if (!apiKey) throw new Error("Para REST API is not configured: set PARA_API_SECRET.");
   const baseUrl = (process.env.PARA_API_BASE || "https://api.getpara.com").replace(/\/$/, "");
@@ -137,6 +145,7 @@ export async function sendViaPara(owner: string, opts: {
   value?: bigint;
   gas?: bigint;
 }): Promise<Hex> {
+  assertServerRuntime();
   const pub = createPublicClient({ chain: monadChain as any, transport: monadTransport });
   let gas = opts.gas;
   if (!gas) {
@@ -380,6 +389,7 @@ export async function fireWithPara(p: {
   slippageBps: number;
   source: "market" | "limit" | "copy";
 }): Promise<Hex> {
+  assertServerRuntime();
   const pub = createPublicClient({ chain: monadChain as any, transport: monadTransport });
   const ownerAddr = p.owner as Address;
 
