@@ -65,7 +65,7 @@ function GateInner({ hooks }: { hooks: any }) {
 
   return (
     <>
-      <div className="fixed inset-0 z-[55] grid place-items-center px-3">
+      <div className="fixed inset-0 z-20 grid place-items-center px-3">
         <div className="absolute inset-0 bg-black/85 backdrop-blur-xl" />
         {/* Brand glow behind the card */}
         <div className="absolute pointer-events-none"

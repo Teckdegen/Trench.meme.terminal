@@ -255,3 +255,45 @@ body::before {
     radial-gradient(35% 25% at 85% 0%, rgba(34, 197, 94, 0.06), transparent 60%);
   z-index: -1;
 }
+
+/* Para auth must sit above our login gate and every in-app modal. */
+body > div:has(iframe[src*="getpara.com"]),
+body > div:has(iframe[src*="app.getpara.com"]),
+iframe[src*="getpara.com"],
+iframe[src*="app.getpara.com"],
+[data-para-modal],
+[id*="para-modal"],
+[class*="para:fixed"],
+[class*="para\\:fixed"] {
+  z-index: 2147483647 !important;
+}
+
+body > div:has(iframe[src*="getpara.com"]),
+body > div:has(iframe[src*="app.getpara.com"]) {
+  position: fixed !important;
+  inset: 0 !important;
+  pointer-events: auto !important;
+}
+
+iframe[src*="getpara.com"],
+iframe[src*="app.getpara.com"] {
+  position: fixed !important;
+  color-scheme: dark;
+}
+
+[class*="para"],
+[data-para-modal] {
+  --para-primary-color: #8b5cf6;
+  --para-accent-color: #8b5cf6;
+  --para-background-color: #050008;
+  --para-surface-color: #090311;
+  --para-text-color: #f5f3ff;
+  color-scheme: dark;
+}
+
+[data-para-modal],
+[class*="para:rounded"],
+[class*="para\\:rounded"] {
+  background-color: #050008 !important;
+  color: #f5f3ff !important;
+}
