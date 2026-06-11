@@ -1,0 +1,21 @@
+{
+  "name": "trench.meme",
+  "short_name": "trench.meme",
+  "description": "Onchain trading terminal for Monad — live tokens, sniper, copy trading, smart money.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#a855f7",
+  "orientation": "portrait-primary",
+  "icons": [
+    { "src": "https://www.image2url.com/r2/default/images/1779999303234-5b9fa706-14c0-4309-af0f-f5f17112bb1c.jpg", "sizes": "192x192", "type": "image/jpeg", "purpose": "any maskable" },
+    { "src": "https://www.image2url.com/r2/default/images/1779999303234-5b9fa706-14c0-4309-af0f-f5f17112bb1c.jpg", "sizes": "512x512", "type": "image/jpeg", "purpose": "any maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Dashboard", "url": "/",         "description": "Live token feeds" },
+    { "name": "Wallet",    "url": "/wallet",   "description": "Your portfolio" },
+    { "name": "Alerts",    "url": "/alerts",   "description": "Notifications" },
+    { "name": "Inbox",     "url": "/inbox",    "description": "DMs" }
+  ]
+}

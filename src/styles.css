@@ -1,0 +1,257 @@
+@import "tailwindcss" source(none);
+@import "tw-animate-css";
+@import "@fontsource/inter/400.css";
+@import "@fontsource/inter/500.css";
+@import "@fontsource/inter/600.css";
+@import "@fontsource/inter/700.css";
+@import "@fontsource/space-grotesk/500.css";
+@import "@fontsource/space-grotesk/600.css";
+@import "@fontsource/space-grotesk/700.css";
+@import "@fontsource/jetbrains-mono/400.css";
+@import "@fontsource/jetbrains-mono/500.css";
+@source "../src";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --font-display: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+:root {
+  --radius: 0.875rem;
+  --background: #0a0612;
+  --surface: transparent;
+  --surface-2: transparent;
+  --foreground: #f5f3ff;
+  --card: #0a0612;
+  --card-foreground: #f5f3ff;
+  --popover: #120a22;
+  --popover-foreground: #f5f3ff;
+  --primary: #8b5cf6;
+  --primary-foreground: #f5f3ff;
+  --secondary: #1a1030;
+  --secondary-foreground: #f5f3ff;
+  --muted: #120a22;
+  --muted-foreground: rgba(245, 243, 255, 0.55);
+  --accent: #a855f7;
+  --accent-foreground: #f5f3ff;
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+  --success: #22c55e;
+  --success-foreground: #0a0612;
+  --warning: #facc15;
+  --border: transparent;
+  --input: rgba(255, 255, 255, 0.06);
+  --ring: #8b5cf6;
+  --shadow-elegant: none;
+  --shadow-glow: none;
+}
+
+@layer base {
+  * {
+    border-color: transparent;
+    border-style: solid;
+    border-width: 0;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  *::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+  }
+  html, body {
+    background-color: #0a0612;
+    color: var(--color-foreground);
+    overflow: hidden;
+    height: 100%;
+  }
+  body {
+    font-family: var(--font-sans);
+  }
+  h1, h2, h3, h4 { font-family: var(--font-display); letter-spacing: -0.02em; color: var(--color-foreground); }
+  .font-mono, code, pre { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+  table { font-variant-numeric: tabular-nums; }
+  button:not([class*="text-up"]):not([class*="text-down"]):not([class*="text-success"]):not([class*="text-destructive"]) {
+    color: inherit;
+  }
+}
+
+@layer utilities {
+  .text-up { color: var(--color-success); }
+  .text-down { color: var(--color-destructive); }
+  .bg-up { background-color: var(--color-success); }
+  .bg-down { background-color: var(--color-destructive); }
+  .bg-up { background-color: var(--color-success); }
+  .bg-down { background-color: var(--color-destructive); }
+  .bg-surface { background-color: var(--color-surface); }
+  .bg-surface-2 { background-color: var(--color-surface-2); }
+  .shadow-elegant { box-shadow: none; }
+  .shadow-glow { box-shadow: none; }
+  .glass {
+    background: transparent;
+    border: 0;
+  }
+  .glass-strong {
+    background: transparent;
+    border: 0;
+  }
+  .glass-subtle {
+    background: transparent;
+    border: 0;
+  }
+  .ios-glass {
+    background: transparent;
+    border: 0;
+  }
+  .row-hover:hover {
+    background: rgba(139, 92, 246, 0.08);
+  }
+  .lit-purple {
+    background: #8b5cf6;
+    color: #ffffff;
+    border: 0;
+  }
+  .lit-purple:hover {
+    background: #a855f7;
+  }
+  .ios-glass-card {
+    background: #120a22;
+    border: 0;
+  }
+  .ios-glass-soft {
+    background: #1a1030;
+    border: 0;
+  }
+  .sectioned .ios-glass-card {
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+  .sectioned .ios-glass-soft {
+    border: 1px solid rgba(255, 255, 255, 0.06);
+  }
+  .scrollbar-hide {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+  }
+
+  /* ──────────────── Global polish ──────────────── */
+
+  /* Slim custom scrollbar */
+  *::-webkit-scrollbar { width: 8px; height: 8px; }
+  *::-webkit-scrollbar-track { background: transparent; }
+  *::-webkit-scrollbar-thumb {
+    background: rgba(168, 85, 247, 0.18);
+    border-radius: 4px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  *::-webkit-scrollbar-thumb:hover { background: rgba(168, 85, 247, 0.35); background-clip: padding-box; }
+
+  /* Smooth focus rings (replaces the harsh browser default) */
+  :focus-visible {
+    outline: 2px solid rgba(168, 85, 247, 0.6);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+  button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible {
+    outline: 2px solid rgba(168, 85, 247, 0.45);
+    outline-offset: 1px;
+  }
+
+  /* Buttons / cards feel — subtle press-down */
+  button { transition: transform 80ms ease-out, background-color 120ms ease-out, color 120ms ease-out, opacity 120ms ease-out; }
+  button:active:not(:disabled) { transform: translateY(1px); }
+
+  /* lit-purple gets a soft glow on hover */
+  .lit-purple {
+    transition: background-color 120ms ease-out, box-shadow 160ms ease-out, transform 80ms ease-out;
+  }
+  .lit-purple:hover:not(:disabled) {
+    box-shadow: 0 6px 24px -8px rgba(168, 85, 247, 0.55);
+  }
+
+  /* Card hover lift */
+  .row-hover:hover, .ios-glass-card:hover { transition: background-color 120ms ease-out; }
+
+  /* Smooth route transitions */
+  main { animation: fade-in 200ms ease-out; }
+  @keyframes fade-in {
+    from { opacity: 0; transform: translateY(4px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Modal entrance */
+  .fixed.inset-0.z-50 > div.relative,
+  .fixed.inset-0.z-\[55\] > div.relative,
+  .fixed.inset-0.z-\[60\] > div.relative {
+    animation: modal-pop 180ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  @keyframes modal-pop {
+    from { opacity: 0; transform: scale(0.96) translateY(6px); }
+    to   { opacity: 1; transform: scale(1) translateY(0); }
+  }
+
+  /* Selection */
+  ::selection { background: rgba(168, 85, 247, 0.35); color: #fff; }
+
+  /* Better text rendering */
+  html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility; }
+
+  /* Subtle pulse for "live" dots */
+  @keyframes live-pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50%      { opacity: 0.5; transform: scale(1.15); }
+  }
+  .animate-pulse { animation: live-pulse 1.6s ease-in-out infinite; }
+
+  /* Number tickers — tabular nums by default so balances don't jitter */
+  .tabular-nums { font-variant-numeric: tabular-nums; }
+}
+
+/* ──────────────── Brand glow background ──────────────── */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(40% 30% at 15% 0%, rgba(168, 85, 247, 0.10), transparent 60%),
+    radial-gradient(35% 25% at 85% 0%, rgba(34, 197, 94, 0.06), transparent 60%);
+  z-index: -1;
+}

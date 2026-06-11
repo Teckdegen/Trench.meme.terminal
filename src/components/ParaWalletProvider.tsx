@@ -1,0 +1,131 @@
+import "@getpara/react-sdk/styles.css";
+
+import { Suspense, useEffect, useState, type ReactNode } from "react";
+import { setMe, useMe } from "@/lib/useMe";
+import { getParaConfig } from "@/lib/para-config";
+import { APP_NAME, APP_LOGO } from "@/lib/brand";
+import { ParaWalletBridge } from "@/components/ParaWalletBridge";
+
+type Config = { apiKey: string | null };
+
+export function ParaWalletProvider({ children }: { children: ReactNode }) {
+  const [config, setConfig] = useState<Config | null>(null);
+
+  useEffect(() => {
+    getParaConfig().then(setConfig).catch(() => setConfig({ apiKey: null }));
+  }, []);
+
+  if (typeof window === "undefined") return <>{children}</>;
+  if (config === null) return <>{children}</>;
+  if (!config.apiKey) return <>{children}</>;
+
+  return (
+    <Suspense fallback={<>{children}</>}>
+      <ParaInner apiKey={config.apiKey}>{children}</ParaInner>
+    </Suspense>
+  );
+}
+
+function ParaInner({ apiKey, children }: { apiKey: string; children: ReactNode }) {
+  const [Mod, setMod] = useState<any>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const m: any = await import("@getpara/react-sdk");
+        setMod(m);
+      } catch (e) {
+        console.warn("[para] SDK failed to load", e);
+      }
+    })();
+  }, []);
+
+  if (!Mod) return <>{children}</>;
+  const ParaProvider = Mod.ParaProvider;
+  const Environment = Mod.Environment;
+
+  return (
+    <ParaProvider
+      paraClientConfig={{
+        apiKey,
+        env: Environment.PROD,
+      }}
+      config={{
+        appName: APP_NAME,
+      }}
+      configOverrides={{
+        authConfig: {
+          oAuthMethods: ["GOOGLE", "APPLE"],
+          authMethods: ["EMAIL", "OAUTH"],
+        },
+        modalConfig: {
+          hideWallets: true,
+          logo: APP_LOGO,
+        },
+        themeConfig: {
+          mode: "dark",
+          accentColor: "#a855f7",
+          borderRadius: "lg",
+        },
+      }}
+      paraModalConfig={{
+        authLayout: ["AUTH:FULL"],
+        oAuthMethods: ["GOOGLE", "APPLE"],
+        disableEmailLogin: false,
+        disablePhoneLogin: true,
+        hideWallets: true,
+        logo: APP_LOGO,
+        theme: {
+          mode: "dark",
+          accentColor: "#a855f7",
+          borderRadius: "lg",
+        },
+        recoverySecretStepEnabled: true,
+        twoFactorAuthEnabled: false,
+      }}
+      externalWalletConfig={{
+        wallets: [],
+      }}
+    >
+      {children}
+      <ParaSync hooks={Mod} />
+      <ParaWalletBridge hooks={Mod} />
+    </ParaProvider>
+  );
+}
+
+function embeddedWalletFromAccount(account: any) {
+  const embedded = account?.embedded;
+  const wallets = embedded?.wallets ?? embedded?.walletsByType?.EVM ?? [];
+  return Array.isArray(wallets) ? wallets[0] : undefined;
+}
+
+function ParaSync({ hooks }: { hooks: any }) {
+  const me = useMe();
+  const useAccount = hooks.useAccount;
+  const useClient = hooks.useClient;
+  const account = useAccount?.() ?? { isLoading: true, isConnected: false };
+  const client = useClient?.();
+  const wallet = embeddedWalletFromAccount(account);
+  const address: string | undefined =
+    wallet?.address ??
+    account?.address ??
+    account?.embedded?.address ??
+    Object.values(client?.wallets ?? {})?.find((w: any) => w?.type === "EVM")?.address;
+
+  useEffect(() => {
+    const addr = account?.isConnected ? address?.toLowerCase() : undefined;
+    if (addr && addr !== me) setMe(addr);
+    if (!account?.isLoading && !addr && me) setMe(undefined);
+  }, [account?.isConnected, account?.isLoading, address, me]);
+
+  useEffect(() => {
+    if (client) (window as any).__trenchParaClient = client;
+    else delete (window as any).__trenchParaClient;
+    return () => {
+      if ((window as any).__trenchParaClient === client) delete (window as any).__trenchParaClient;
+    };
+  }, [client]);
+
+  return null;
+}

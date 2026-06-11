@@ -1,0 +1,12 @@
+ {
+  "issued_at": "2026-06-01T21:38:55.799Z",
+  "network": "mainnet",
+  "base_url": "https://api.nad.fun",
+  "chain_id": 143,
+  "wallet_address": "0xdb4034fA3829B488eFc1FC0f01F5F1Af722562Df",
+  "id": 5109564849847828000,
+  "name": "trench.meme",
+  "key_prefix": "nadfun_cijHc",
+  "api_key": "nadfun_cijHcEGU0NxIBmQdZYuZcX71ppK4IAMr",
+  "expires_in_days": 365
+}
