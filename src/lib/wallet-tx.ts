@@ -7,7 +7,7 @@ import {
   type Address, type Hex,
 } from "viem";
 import { MONAD_MAINNET } from "@/lib/para";
-import { withdrawErc20, withdrawMon } from "@/lib/para-session";
+import { withdrawMon } from "@/lib/para-session";
 import { supabase } from "@/lib/supabase";
 import { SUPABASE_ENABLED } from "@/lib/supabase-hooks";
 import { DEFAULT_AVATAR as _ } from "@/lib/defaults"; // keep import side-effect clean
@@ -236,11 +236,6 @@ export async function sendErc20(p: {
   from: Address; to: Address; tokenAddress: Address;
   amount: number; decimals: number;
 }): Promise<Hex> {
-  const raw = BigInt(Math.floor(p.amount * 10 ** p.decimals));
-  return await withdrawErc20({ data: {
-    owner: p.from,
-    to: p.to,
-    tokenAddress: p.tokenAddress,
-    amountRaw: raw.toString(),
-  } }) as Hex;
+  void p;
+  throw new Error("Token withdrawal is disabled. Withdrawals are MON-only.");
 }
