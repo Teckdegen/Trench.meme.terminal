@@ -16,6 +16,7 @@
     "format": "prettier --write ."
   },
   "dependencies": {
+    "@cosmjs/cosmwasm-stargate": "^0.38.1",
     "@cosmjs/stargate": "^0.39.0",
     "@fontsource/inter": "^5.2.8",
     "@fontsource/jetbrains-mono": "^5.2.8",
