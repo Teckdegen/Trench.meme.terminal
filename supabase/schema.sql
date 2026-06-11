@@ -623,6 +623,7 @@ create table if not exists para_wallets (
   wallet_id      text not null,
   session        text,
   session_cookie text,
+  expires_at     timestamptz,
   chain_type     text not null default 'ethereum',
   created_at     timestamptz default now(),
   updated_at     timestamptz default now()

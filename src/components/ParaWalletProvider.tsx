@@ -126,8 +126,8 @@ function ParaSync({ hooks }: { hooks: any }) {
   useEffect(() => {
     const addr = account?.isConnected ? address?.toLowerCase() : undefined;
     if (addr && addr !== me) setMe(addr);
-    if (!account?.isLoading && !addr && me) setMe(undefined);
-  }, [account?.isConnected, account?.isLoading, address, me]);
+    else if (addr && addr === me) setMe(addr);
+  }, [account?.isConnected, address, me]);
 
   useEffect(() => {
     if (client) (window as any).__trenchParaClient = client;

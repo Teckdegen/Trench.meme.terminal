@@ -43,9 +43,17 @@ function paraCreds() {
 
 async function paraSessionFor(owner: string): Promise<{ session: string | null; sessionCookie: string | null }> {
   const { data } = await admin().from("para_wallets")
-    .select("session, session_cookie")
+    .select("session, session_cookie, expires_at, updated_at")
     .eq("owner_address", owner.toLowerCase())
     .maybeSingle();
+  const expiresAt = (data as any)?.expires_at
+    ? +new Date((data as any).expires_at)
+    : (data as any)?.updated_at
+      ? +new Date((data as any).updated_at) + 7 * 86_400_000
+      : 0;
+  if (expiresAt && Date.now() > expiresAt) {
+    throw new Error("Para session expired - sign in again.");
+  }
   if ((data as any)?.session || (data as any)?.session_cookie) {
     return {
       session: (data as any).session ?? null,
@@ -89,15 +97,44 @@ export async function sendViaPara(owner: string, opts: {
   value?: bigint;
   gas?: bigint;
 }): Promise<Hex> {
+  const pub = createPublicClient({ chain: monadChain as any, transport: http(RPC) });
+  let gas = opts.gas;
+  if (!gas) {
+    try {
+      gas = await pub.estimateGas({
+        account: owner as Address,
+        to: opts.to,
+        data: opts.data,
+        value: opts.value,
+      });
+      gas = (gas * 13n) / 10n;
+    } catch {
+      if (!opts.data) gas = 42_000n;
+    }
+  }
+  if ((opts.value ?? 0n) > 0n) {
+    const bal = await pub.getBalance({ address: owner as Address });
+    const gasPrice = await pub.getGasPrice().catch(() => 0n);
+    const needed = (opts.value ?? 0n) + (gas && gasPrice ? gas * gasPrice : 0n);
+    if (bal < needed) throw new Error("Insufficient MON for amount plus gas.");
+  }
   const client = await paraClientFor(owner);
-  return await client.sendTransaction({
+  const tx = {
     account: owner as Address,
     chain: monadChain as any,
     to: opts.to,
     data: opts.data,
     value: opts.value,
-    gas: opts.gas,
-  });
+    gas,
+  };
+  try {
+    return await client.sendTransaction(tx);
+  } catch (e: any) {
+    const msg = String(e?.shortMessage ?? e?.message ?? e);
+    if (!/rpc request failed|network|timeout|fetch/i.test(msg)) throw e;
+    await new Promise((resolve) => setTimeout(resolve, 900));
+    return await client.sendTransaction(tx);
+  }
 }
 
 export async function fireWithPara(p: {

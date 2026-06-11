@@ -224,10 +224,16 @@ server.listen(PORT, HOST, () => {
 async function paraClientFor(owner) {
   const { data, error } = await sb
     .from("para_wallets")
-    .select("session, session_cookie")
+    .select("session, session_cookie, expires_at, updated_at")
     .eq("owner_address", lower(owner))
     .maybeSingle();
   if (error) throw error;
+  const expiresAt = data?.expires_at
+    ? +new Date(data.expires_at)
+    : data?.updated_at
+      ? +new Date(data.updated_at) + 7 * 86_400_000
+      : 0;
+  if (expiresAt && Date.now() > expiresAt) throw new Error(`Para session expired for ${owner}; sign in again`);
   if (!data?.session && !data?.session_cookie) throw new Error(`no Para session for ${owner}`);
 
   const para = new Para(Environment.PROD, PARA_API_KEY);
@@ -248,15 +254,37 @@ async function paraClientFor(owner) {
 }
 
 async function sendViaPara(owner, tx) {
+  let gas = tx.gas;
+  if (!gas) {
+    try {
+      gas = await publicClient.estimateGas({
+        account: lower(owner),
+        to: tx.to,
+        data: tx.data,
+        value: tx.value,
+      });
+      gas = (gas * 13n) / 10n;
+    } catch {
+      if (!tx.data) gas = 42_000n;
+    }
+  }
   const client = await paraClientFor(owner);
-  return client.sendTransaction({
+  const req = {
     account: lower(owner),
     chain: monad,
     to: tx.to,
     data: tx.data,
     value: tx.value,
-    gas: tx.gas,
-  });
+    gas,
+  };
+  try {
+    return await client.sendTransaction(req);
+  } catch (err) {
+    const msg = String(err?.shortMessage || err?.message || err);
+    if (!/rpc request failed|network|timeout|fetch/i.test(msg)) throw err;
+    await new Promise((resolve) => setTimeout(resolve, 900));
+    return client.sendTransaction(req);
+  }
 }
 
 async function resolveVenue(tokenAddress, requested) {

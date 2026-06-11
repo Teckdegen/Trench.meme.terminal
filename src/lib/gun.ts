@@ -17,6 +17,24 @@ function messagesNode(gun: any, scope: "cabal" | "dm" | "token", id: string) {
   return gun.get(NS).get(scope).get(id).get("messages");
 }
 
+export function gunPutAck(node: any, payload: unknown): Promise<void> {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      reject(new Error("Gun relay did not acknowledge the write."));
+    }, 8_000);
+    node.put(payload, (ack: any) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (ack?.err) reject(new Error(String(ack.err)));
+      else resolve();
+    });
+  });
+}
+
 export function useGunChat(
   scope: "cabal" | "dm" | "token",
   id: string | undefined,
@@ -216,7 +234,7 @@ export async function gunSend(
     deleted_by: m.deleted_by ?? null,
     deleted_at: m.deleted_at ?? null,
   };
-  messagesNode(gun, scope, id).get(m.id).put(payload);
+  await gunPutAck(messagesNode(gun, scope, id).get(m.id), payload);
 }
 
 /** Hard-delete a message — node is removed (null) so it vanishes on both
@@ -233,7 +251,7 @@ export async function gunDeleteMessage(
   if (!GUN_ENABLED) return;
   const gun = await getGun();
   if (!gun) return;
-  messagesNode(gun, scope, channelId).get(msg.id).put(null);
+  await gunPutAck(messagesNode(gun, scope, channelId).get(msg.id), null);
 }
 
 /** Edit a text message in place (keeps original ts for ordering). */

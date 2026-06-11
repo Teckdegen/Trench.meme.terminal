@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { GUN_ENABLED, NS, getGun } from "@/lib/gun-client";
-import { gunSend, useGunChat, gunDeleteMessage, gunEditMessage } from "@/lib/gun";
+import { gunPutAck, gunSend, useGunChat, gunDeleteMessage, gunEditMessage } from "@/lib/gun";
 
 export { GUN_ENABLED };
 
@@ -200,31 +200,42 @@ export async function sendDM(
   optimisticByChannel.set(channelId, [...pending, optimistic]);
   bumpOptimistic();
   persistDmMessage(channelId, optimistic);
-  await gunSend("dm", channelId, {
-    id,
-    sender: me.toLowerCase(),
-    body,
-    kind,
-    ts,
-  });
-  const preview = dmPreview(body, kind);
-  const gun = await getGun();
-  if (!gun) return;
-  const threadPut = {
-    channelId,
-    partner: "",
-    lastBody: preview,
-    lastTs: ts,
-    lastSender: me.toLowerCase(),
-  };
-  gun.get(NS).get("threads").get(me.toLowerCase()).get(channelId).put({
-    ...threadPut,
-    partner: partner.toLowerCase(),
-  });
-  gun.get(NS).get("threads").get(partner.toLowerCase()).get(channelId).put({
-    ...threadPut,
-    partner: me.toLowerCase(),
-  });
+  try {
+    await gunSend("dm", channelId, {
+      id,
+      sender: me.toLowerCase(),
+      body,
+      kind,
+      ts,
+    });
+    const preview = dmPreview(body, kind);
+    const gun = await getGun();
+    if (!gun) throw new Error("Gun relay unavailable");
+    const threadPut = {
+      channelId,
+      partner: "",
+      lastBody: preview,
+      lastTs: ts,
+      lastSender: me.toLowerCase(),
+    };
+    await Promise.all([
+      gunPutAck(gun.get(NS).get("threads").get(me.toLowerCase()).get(channelId), {
+        ...threadPut,
+        partner: partner.toLowerCase(),
+      }),
+      gunPutAck(gun.get(NS).get("threads").get(partner.toLowerCase()).get(channelId), {
+        ...threadPut,
+        partner: me.toLowerCase(),
+      }),
+    ]);
+  } catch (e) {
+    const next = (optimisticByChannel.get(channelId) ?? []).filter((m) => m.id !== id);
+    if (next.length) optimisticByChannel.set(channelId, next);
+    else optimisticByChannel.delete(channelId);
+    saveMsgCache(channelId, loadMsgCache(channelId).filter((m) => m.id !== id));
+    bumpOptimistic();
+    throw e;
+  }
 }
 
 export function useDMThreads(me: string | undefined): DMThread[] {
@@ -291,11 +302,13 @@ export async function startDMThread(me: string, partner: string) {
   const gun = await getGun();
   if (!gun) return null;
   const row = { channelId, partner: partner.toLowerCase(), lastBody: "", lastTs: ts, lastSender: me.toLowerCase() };
-  gun.get(NS).get("threads").get(me.toLowerCase()).get(channelId).put(row);
-  gun.get(NS).get("threads").get(partner.toLowerCase()).get(channelId).put({
-    ...row,
-    partner: me.toLowerCase(),
-  });
+  await Promise.all([
+    gunPutAck(gun.get(NS).get("threads").get(me.toLowerCase()).get(channelId), row),
+    gunPutAck(gun.get(NS).get("threads").get(partner.toLowerCase()).get(channelId), {
+      ...row,
+      partner: me.toLowerCase(),
+    }),
+  ]);
   return channelId;
 }
 
@@ -341,5 +354,5 @@ export async function deleteDMThread(me: string, partner: string) {
   const channelId = dmChannelId(me, partner);
   const gun = await getGun();
   if (!gun) return;
-  gun.get(NS).get("threads").get(me.toLowerCase()).get(channelId).put(null);
+  await gunPutAck(gun.get(NS).get("threads").get(me.toLowerCase()).get(channelId), null);
 }

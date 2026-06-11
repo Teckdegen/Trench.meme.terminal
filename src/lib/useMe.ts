@@ -12,12 +12,20 @@
 import { useEffect, useState } from "react";
 
 const KEY = "monad.me.address";
+const EXPIRES_KEY = "monad.me.expires_at";
+const SESSION_MS = 7 * 86_400_000;
 
 // Shared bus — one per page load. Components subscribe; setMe broadcasts.
 const bus = typeof window !== "undefined" ? new EventTarget() : null;
 
 function readStored(): string | undefined {
   if (typeof window === "undefined") return undefined;
+  const expiresAt = Number(localStorage.getItem(EXPIRES_KEY) ?? 0);
+  if (expiresAt && Date.now() > expiresAt) {
+    localStorage.removeItem(KEY);
+    localStorage.removeItem(EXPIRES_KEY);
+    return undefined;
+  }
   return localStorage.getItem(KEY) ?? undefined;
 }
 
@@ -51,8 +59,13 @@ export function setMe(address: string | undefined) {
   if (typeof window === "undefined") return;
   const next = address ? address.toLowerCase() : undefined;
   const prev = localStorage.getItem(KEY) ?? undefined;
-  if (next) localStorage.setItem(KEY, next);
-  else localStorage.removeItem(KEY);
+  if (next) {
+    localStorage.setItem(KEY, next);
+    localStorage.setItem(EXPIRES_KEY, String(Date.now() + SESSION_MS));
+  } else {
+    localStorage.removeItem(KEY);
+    localStorage.removeItem(EXPIRES_KEY);
+  }
   if (prev === next) return; // no-op
   bus?.dispatchEvent(new CustomEvent("me:change", { detail: next }));
 }

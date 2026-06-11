@@ -31,6 +31,7 @@ export const registerParaWallet = createServerFn({ method: "POST" })
       wallet_id: data.walletId,
       session: data.session ?? null,
       session_cookie: data.sessionCookie ?? null,
+      expires_at: new Date(Date.now() + 7 * 86_400_000).toISOString(),
       chain_type: "ethereum",
       updated_at: new Date().toISOString(),
     }, { onConflict: "owner_address" });
