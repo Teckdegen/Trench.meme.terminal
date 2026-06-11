@@ -1284,13 +1284,25 @@ function MembersRail({
     if (!me || !isOwner) return;
     if (!confirm("Rotate cabal key? All members re-derive on next message.")) return;
     setBusy("rotate");
-    try { await rotateCabalKey(cabal.id, me); } finally { setBusy(null); }
+    try {
+      const res = await rotateCabalKey(cabal.id, me);
+      alert(`Encryption key rotated. Granted ${res.granted} pending member${res.granted === 1 ? "" : "s"}. ${res.stillPending} still pending.`);
+    } catch (e: any) {
+      console.error(e);
+      alert(`Couldn't rotate encryption key: ${e?.message ?? e}`);
+    } finally { setBusy(null); }
   };
 
   const retry = async () => {
     if (!me) return;
     setBusy("retry");
-    try { await retryPendingInvites(cabal.id, me); } finally { setBusy(null); }
+    try {
+      const res = await retryPendingInvites(cabal.id, me);
+      alert(`Granted ${res.granted} member${res.granted === 1 ? "" : "s"}. ${res.stillPending} still pending.`);
+    } catch (e: any) {
+      console.error(e);
+      alert(`Couldn't retry invites: ${e?.message ?? e}`);
+    } finally { setBusy(null); }
   };
 
   const invite = async () => {

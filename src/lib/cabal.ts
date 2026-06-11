@@ -2,14 +2,17 @@
 // Trade alerts are pushed by the indexer via gun-write.ts.
 
 import { useEffect, useState } from "react";
+import { createServerFn } from "@tanstack/react-start";
 import { GUN_ENABLED, NS, getGun } from "@/lib/gun-client";
+import { supabaseAdmin } from "@/lib/supabase";
 import {
   bootstrapCabalKey,
+  ensureMyKeypair,
   loadCabalKey,
   inviteMemberToCabal,
   retryPendingInvites,
   kickMemberFromCabal as revokeCabalMemberKey,
-  rotateCabalKey,
+  rotateCabalKey as rotateCabalKeyCrypto,
   clearCabalKeyCache,
 } from "@/lib/cabal-crypto";
 
@@ -28,6 +31,29 @@ import {
   type GunMessage,
 } from "@/lib/gun";
 import { sendDM } from "@/lib/gun-dms";
+
+const requestPendingCabalInvite = createServerFn({ method: "POST" })
+  .inputValidator((d: { cabalId: string; invitee: string; grantedBy: string }) => d)
+  .handler(async ({ data }) => {
+    const { error } = await supabaseAdmin().from("pending_cabal_invites").upsert({
+      cabal_id: data.cabalId,
+      invitee: data.invitee.toLowerCase(),
+      granted_by: data.grantedBy.toLowerCase(),
+    }, { onConflict: "cabal_id,invitee" });
+    if (error) throw new Error(error.message);
+  });
+
+const listPendingCabalInvites = createServerFn({ method: "GET" })
+  .inputValidator((d: { cabalId: string; grantedBy: string }) => d)
+  .handler(async ({ data }) => {
+    const { data: rows, error } = await supabaseAdmin()
+      .from("pending_cabal_invites")
+      .select("invitee, created_at")
+      .eq("cabal_id", data.cabalId)
+      .eq("granted_by", data.grantedBy.toLowerCase());
+    if (error) throw new Error(error.message);
+    return (rows ?? []) as Array<{ invitee: string; created_at: string }>;
+  });
 
 export type CabalMeta = {
   id: string;
@@ -321,7 +347,23 @@ export async function joinCabalByCode(code: string, me: string): Promise<CabalMe
   const meta = await new Promise<CabalMeta | null>((res) => {
     cabalNode(gun, resolvedId).get("meta").once((d: CabalMeta) => res(d ?? null));
   });
+  if (meta) await requestCabalKeyGrant(meta, me);
   return meta;
+}
+
+async function requestCabalKeyGrant(cabal: CabalMeta, me: string) {
+  try {
+    await ensureMyKeypair(me);
+    await requestPendingCabalInvite({
+      data: {
+        cabalId: cabal.id,
+        invitee: me,
+        grantedBy: cabal.host_address,
+      },
+    });
+  } catch (e) {
+    console.warn("[cabal] key grant request failed", e);
+  }
 }
 
 async function findCabalIdByInviteCode(gun: any, code: string): Promise<string | null> {
@@ -697,8 +739,13 @@ export function useCabalTyping(cabalId: string | undefined, me: string | undefin
   return useGunTyping("cabal", cabalId, me);
 }
 
-// Re-export crypto-side ops so UI can call them
-export { inviteMemberToCabal, retryPendingInvites, rotateCabalKey };
+export { inviteMemberToCabal, retryPendingInvites };
+
+export async function rotateCabalKey(cabalId: string, me: string): Promise<{ granted: number; stillPending: number }> {
+  const retry = await retryPendingInvites(cabalId, me).catch(() => ({ granted: 0, stillPending: 0 }));
+  await rotateCabalKeyCrypto(cabalId, me);
+  return retry;
+}
 
 // ─────────────── Pending invites (Supabase-backed) ───────────────────
 export function usePendingInvites(cabalId: string | undefined, me: string | undefined) {
@@ -707,12 +754,8 @@ export function usePendingInvites(cabalId: string | undefined, me: string | unde
     if (!cabalId || !me) return;
     let cancel = false;
     const load = async () => {
-      const { supabase } = await import("@/lib/supabase");
-      const { data } = await supabase().from("pending_cabal_invites")
-        .select("invitee, created_at")
-        .eq("cabal_id", cabalId)
-        .eq("granted_by", me.toLowerCase());
-      if (!cancel) setPending((data as any) ?? []);
+      const data = await listPendingCabalInvites({ data: { cabalId, grantedBy: me } });
+      if (!cancel) setPending(data ?? []);
     };
     void load();
     const iv = setInterval(load, 15_000);

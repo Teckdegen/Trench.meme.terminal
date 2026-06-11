@@ -14,6 +14,18 @@ import { agoraToken } from "@/lib/agora";
 
 type Remote = { uid: number | string; audio: boolean; speaking: boolean; muted: boolean };
 
+function recoverFromStaleChunk(error: unknown) {
+  if (typeof window === "undefined") return false;
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  if (!/dynamically imported module|failed to fetch/i.test(message)) return false;
+  const key = "trench.voice.chunk_reload";
+  const last = Number(sessionStorage.getItem(key) ?? 0);
+  if (Date.now() - last < 30_000) return false;
+  sessionStorage.setItem(key, String(Date.now()));
+  window.location.reload();
+  return true;
+}
+
 export function RoomVoice({
   roomId, identity, onLeave,
 }: { roomId: string; identity: string; onLeave?: () => void }) {
@@ -80,6 +92,7 @@ export function RoomVoice({
         localTrackRef.current = mic;
         setReady(true);
       } catch (e: any) {
+        if (recoverFromStaleChunk(e)) return;
         setErr(e?.message ?? "Failed to join voice");
       }
     })();
