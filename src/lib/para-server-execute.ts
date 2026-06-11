@@ -202,12 +202,6 @@ async function nadfunTokenMeta(token: string): Promise<NadfunTokenMeta | null> {
   }
 }
 
-function isNadfunCurve(meta: NadfunTokenMeta | null) {
-  if (!meta) return false;
-  if (meta.isGraduated === false) return true;
-  return /CURVE/i.test(meta.marketType ?? "");
-}
-
 function applySlippage(amount: bigint, slippageBps: number) {
   if (amount <= 0n) return 0n;
   const bps = BigInt(Math.max(0, Math.min(10_000, slippageBps || 50)));
@@ -402,9 +396,9 @@ export async function fireWithPara(p: {
 
   let hash: Hex;
   const token = p.tokenAddress as Address;
-  const directNadfun = isNadfunCurve(await nadfunTokenMeta(p.tokenAddress));
+  const preferDirectNadfun = p.venue === "nadfun";
 
-  if (directNadfun) {
+  if (preferDirectNadfun) {
     hash = await fireDirectNadfun({
       pub,
       owner: p.owner,
@@ -428,6 +422,8 @@ export async function fireWithPara(p: {
         slippageBps: p.slippageBps,
       });
     } catch (e) {
+      const meta = await nadfunTokenMeta(p.tokenAddress);
+      if (!meta?.version) throw e;
       console.warn("[para-exec] Dirol route failed, falling back to direct Nad.fun route", e);
       hash = await fireDirectNadfun({
         pub,
