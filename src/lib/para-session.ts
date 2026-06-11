@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { supabaseAdmin } from "@/lib/supabase";
 import { defaultAccountHandle, defaultDisplayName } from "@/lib/handles";
 import {
-  createPublicClient, fallback, http, type Address,
+  createPublicClient, encodeFunctionData, fallback, http, parseAbi, type Address,
 } from "viem";
 
 const RPC_URLS = [
@@ -23,6 +23,10 @@ const monadChain = {
   nativeCurrency: { name: "MON", symbol: "MON", decimals: 18 },
   rpcUrls: { default: { http: [RPC] } },
 } as const;
+
+const ERC20_TRANSFER_ABI = parseAbi([
+  "function transfer(address to,uint256 amount) returns (bool)",
+]);
 
 export const registerParaWallet = createServerFn({ method: "POST" })
   .inputValidator((d: {
@@ -123,5 +127,39 @@ export const withdrawMon = createServerFn({ method: "POST" })
       return await sendViaPara(owner, { to, value: amountWei });
     } catch (e: any) {
       throw new Error(e?.shortMessage ?? e?.message ?? "Withdrawal RPC request failed.");
+    }
+  });
+
+export const withdrawErc20 = createServerFn({ method: "POST" })
+  .inputValidator((d: {
+    owner: string;
+    to: string;
+    tokenAddress: string;
+    amountRaw: string;
+  }) => d)
+  .handler(async ({ data }) => {
+    const owner = data.owner.toLowerCase() as Address;
+    const to = data.to.trim() as Address;
+    const tokenAddress = data.tokenAddress.trim() as Address;
+
+    if (!/^0x[a-fA-F0-9]{40}$/.test(owner)) throw new Error("Invalid connected wallet.");
+    if (!/^0x[a-fA-F0-9]{40}$/.test(to)) throw new Error("Invalid withdrawal address.");
+    if (!/^0x[a-fA-F0-9]{40}$/.test(tokenAddress)) throw new Error("Invalid token address.");
+    if (!/^\d+$/.test(data.amountRaw)) throw new Error("Invalid withdrawal amount.");
+
+    const amountRaw = BigInt(data.amountRaw);
+    if (amountRaw <= 0n) throw new Error("Withdrawal amount must be greater than zero.");
+
+    const transferData = encodeFunctionData({
+      abi: ERC20_TRANSFER_ABI,
+      functionName: "transfer",
+      args: [to, amountRaw],
+    });
+
+    try {
+      const { sendViaPara } = await import("./para-server-execute");
+      return await sendViaPara(owner, { to: tokenAddress, data: transferData });
+    } catch (e: any) {
+      throw new Error(e?.shortMessage ?? e?.message ?? "Token withdrawal RPC request failed.");
     }
   });

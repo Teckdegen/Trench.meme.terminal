@@ -35,8 +35,13 @@ function BridgeInner({ hooks, me }: { hooks: any; me: string }) {
     let cancel = false;
     (async () => {
       try {
-        const exportSession = client.exportSession ?? client.exportSessionAsync;
-        const session = exportSession ? await exportSession.call(client) : null;
+        const exportSession =
+          client.waitAndExportSession ??
+          client.exportSession ??
+          client.exportSessionAsync;
+        const session = exportSession
+          ? await exportSession.call(client, { excludeSigners: false })
+          : null;
         const sessionCookie = client.retrieveSessionCookie?.() ?? null;
         await registerParaWallet({
           data: {

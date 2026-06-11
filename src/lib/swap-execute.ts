@@ -1,14 +1,9 @@
-// Browser-side trade entry point. Market Buy/Sell signs in the browser so
-// Para can open its auth/signing popup. Bot-driven copy/limit execution still
-// goes through the server fn.
+// Trade entry point. Buy/Sell goes through the server fn so Para signs with
+// the exported embedded-wallet session and never opens a transaction popup.
 
 import { useState, useCallback } from "react";
-import { encodeFunctionData } from "viem";
 import type { Hex, Address } from "viem";
 import { executeServerSwap } from "@/lib/para-session";
-import { ERC20_ABI, MONAD_MAINNET, NAD_FUN_ROUTER_ABI, NADFUN_MAINNET } from "@/lib/abis";
-import { getParaWalletClient } from "@/lib/para";
-import { COMMON_TOKENS, dirolSwap } from "@/lib/dirol";
 import { supabase } from "@/lib/supabase";
 import { notifyTrade, notifyTradeFailed } from "@/lib/trade-fx";
 import { autoShowPnLCard } from "@/components/PnLShareCard";
@@ -33,9 +28,6 @@ export type ExecParams = {
 };
 
 export async function executeSwap(p: ExecParams): Promise<Hex> {
-  if (typeof window !== "undefined" && (p.source ?? "market") === "market") {
-    return executeBrowserSwap(p);
-  }
   const hash = await executeServerSwap({ data: {
     owner: p.recipient,
     venue: p.venue,
@@ -46,91 +38,6 @@ export async function executeSwap(p: ExecParams): Promise<Hex> {
     source: p.source ?? "market",
   }});
   return hash as Hex;
-}
-
-async function executeBrowserSwap(p: ExecParams): Promise<Hex> {
-  const client = await getParaWalletClient(p.recipient);
-  if (!client) throw new Error("Wallet client unavailable. Sign in again.");
-  const isBuy = p.side === "buy";
-  if (p.venue === "dirol") {
-    const tokenIn = isBuy ? COMMON_TOKENS.WMON : p.tokenAddress;
-    const tokenOut = isBuy ? p.tokenAddress : COMMON_TOKENS.WMON;
-    const swap = await dirolSwap({ data: {
-      tokenIn,
-      tokenOut,
-      amount: p.rawAmount.toString(),
-      recipient: p.recipient,
-      slippageBps: p.slippageBps,
-    }});
-
-    if (!isBuy) {
-      const approveData = encodeFunctionData({
-        abi: ERC20_ABI,
-        functionName: "approve",
-        args: [swap.tx.to as Address, p.rawAmount],
-      });
-      await client.sendTransaction({
-        chain: MONAD_MAINNET,
-        to: p.tokenAddress,
-        data: approveData,
-        value: 0n,
-      } as any);
-    }
-
-    return await client.sendTransaction({
-      chain: MONAD_MAINNET,
-      to: swap.tx.to as Address,
-      data: swap.tx.data as Hex,
-      value: isBuy ? p.rawAmount : BigInt(swap.tx.value || "0"),
-      gas: swap.tx.estimatedGas ? BigInt(swap.tx.estimatedGas) : undefined,
-    } as any) as Hex;
-  }
-
-  const deadline = BigInt(Math.floor(Date.now() / 1000) + 300);
-  const nadfunMinOut = 0n;
-  if (isBuy) {
-    const data = encodeFunctionData({
-      abi: NAD_FUN_ROUTER_ABI,
-      functionName: "buyWithNative",
-      args: [{ token: p.tokenAddress, amountOutMin: nadfunMinOut, to: p.recipient, deadline }],
-    });
-    return await client.sendTransaction({
-      chain: MONAD_MAINNET,
-      to: NADFUN_MAINNET.V2_NAD_FUN_ROUTER as Address,
-      data,
-      value: p.rawAmount,
-    } as any) as Hex;
-  }
-
-  const approveData = encodeFunctionData({
-    abi: ERC20_ABI,
-    functionName: "approve",
-    args: [NADFUN_MAINNET.V2_NAD_FUN_ROUTER as Address, p.rawAmount],
-  });
-  await client.sendTransaction({
-    chain: MONAD_MAINNET,
-    to: p.tokenAddress,
-    data: approveData,
-    value: 0n,
-  } as any);
-
-  const sellData = encodeFunctionData({
-    abi: NAD_FUN_ROUTER_ABI,
-    functionName: "sell",
-    args: [{
-      token: p.tokenAddress,
-      amountIn: p.rawAmount,
-      amountOutMin: nadfunMinOut,
-      to: p.recipient,
-      deadline,
-    }],
-  });
-  return await client.sendTransaction({
-    chain: MONAD_MAINNET,
-    to: NADFUN_MAINNET.V2_NAD_FUN_ROUTER as Address,
-    data: sellData,
-    value: 0n,
-  } as any) as Hex;
 }
 
 // React hook wrapper with state

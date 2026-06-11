@@ -52,7 +52,23 @@ function paraCreds() {
   return { apiKey };
 }
 
-async function paraSessionFor(owner: string): Promise<{ session: string | null; sessionCookie: string | null }> {
+function assertHeadlessSession(owner: string, session: string | null) {
+  if (!session) {
+    throw new Error(`No zero-popup Para session for ${owner.slice(0, 6)}...${owner.slice(-4)}. Sign out and back in.`);
+  }
+  try {
+    const decoded = JSON.parse(Buffer.from(session, "base64").toString("utf8"));
+    const wallets = Object.values(decoded.wallets ?? {}) as any[];
+    const hasEvmSigner = wallets.some((w) => w?.type === "EVM" && w?.signer);
+    if (!hasEvmSigner || !decoded.sessionCookie) {
+      throw new Error("missing signer");
+    }
+  } catch {
+    throw new Error(`Saved Para session is not zero-popup ready for ${owner.slice(0, 6)}...${owner.slice(-4)}. Sign out and back in.`);
+  }
+}
+
+async function paraSessionFor(owner: string): Promise<{ session: string }> {
   const { data } = await admin().from("para_wallets")
     .select("session, session_cookie, expires_at, updated_at")
     .eq("owner_address", owner.toLowerCase())
@@ -65,13 +81,9 @@ async function paraSessionFor(owner: string): Promise<{ session: string | null; 
   if (expiresAt && Date.now() > expiresAt) {
     throw new Error("Para session expired - sign in again.");
   }
-  if ((data as any)?.session || (data as any)?.session_cookie) {
-    return {
-      session: (data as any).session ?? null,
-      sessionCookie: (data as any).session_cookie ?? null,
-    };
-  }
-  throw new Error(`No Para session for ${owner.slice(0, 6)}...${owner.slice(-4)}. Sign out and back in.`);
+  const session = (data as any)?.session ?? null;
+  assertHeadlessSession(owner, session);
+  return { session };
 }
 
 async function paraClientFor(owner: string) {
@@ -82,12 +94,10 @@ async function paraClientFor(owner: string) {
   ]);
 
   const para = new Para(Environment.PROD, apiKey);
-  const { session, sessionCookie } = await paraSessionFor(owner);
+  const { session } = await paraSessionFor(owner);
 
-  if (session && typeof para.importSession === "function") {
+  if (typeof para.importSession === "function") {
     await para.importSession(session);
-  } else if (sessionCookie) {
-    para.retrieveSessionCookie = () => sessionCookie;
   } else {
     throw new Error(`Para session for ${owner.slice(0, 6)}...${owner.slice(-4)} is empty. Sign out and back in.`);
   }

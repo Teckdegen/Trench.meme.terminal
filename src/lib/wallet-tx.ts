@@ -3,10 +3,11 @@
 
 import { useEffect, useState, useCallback } from "react";
 import {
-  createPublicClient, http, parseAbi, encodeFunctionData,
+  createPublicClient, http, parseAbi,
   type Address, type Hex,
 } from "viem";
 import { MONAD_MAINNET } from "@/lib/para";
+import { withdrawErc20, withdrawMon } from "@/lib/para-session";
 import { supabase } from "@/lib/supabase";
 import { SUPABASE_ENABLED } from "@/lib/supabase-hooks";
 import { DEFAULT_AVATAR as _ } from "@/lib/defaults"; // keep import side-effect clean
@@ -222,14 +223,12 @@ export function useTokenHoldings(me: string | undefined) {
 export async function sendMon(p: {
   from: Address; to: Address; amountMon: number;
 }): Promise<Hex> {
-  const { getParaWalletClient } = await import("@/lib/para");
-  const client = await getParaWalletClient(p.from);
-  if (!client) throw new Error("Wallet client unavailable");
   const wei = BigInt(Math.floor(p.amountMon * 1e18));
-  return client.sendTransaction({
-    to: p.to, value: wei,
-    chain: MONAD_MAINNET,
-  } as any);
+  return await withdrawMon({ data: {
+    owner: p.from,
+    to: p.to,
+    amountWei: wei.toString(),
+  } }) as Hex;
 }
 
 // ─────────────── ERC-20 send ─────────────────────────────────────────
@@ -237,15 +236,11 @@ export async function sendErc20(p: {
   from: Address; to: Address; tokenAddress: Address;
   amount: number; decimals: number;
 }): Promise<Hex> {
-  const { getParaWalletClient } = await import("@/lib/para");
-  const client = await getParaWalletClient(p.from);
-  if (!client) throw new Error("Wallet client unavailable");
   const raw = BigInt(Math.floor(p.amount * 10 ** p.decimals));
-  const data = encodeFunctionData({
-    abi: ERC20, functionName: "transfer", args: [p.to, raw],
-  });
-  return client.sendTransaction({
-    to: p.tokenAddress, data, value: 0n,
-    chain: MONAD_MAINNET,
-  } as any);
+  return await withdrawErc20({ data: {
+    owner: p.from,
+    to: p.to,
+    tokenAddress: p.tokenAddress,
+    amountRaw: raw.toString(),
+  } }) as Hex;
 }
