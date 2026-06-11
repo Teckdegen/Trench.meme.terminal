@@ -659,16 +659,6 @@ export async function markNotificationRead(id: string, me?: string) {
 // useFollow(targetAddress) returns { isFollowing, followerCount, followingCount,
 // toggle() }. Subscribes to follows realtime so counts stay live.
 
-async function ensureAccountRow(sb: ReturnType<typeof supabaseAdmin>, address: string) {
-  const { data } = await sb.from("accounts").select("address").eq("address", address).maybeSingle();
-  if (data) return;
-  await sb.from("accounts").insert({
-    address,
-    handle: defaultAccountHandle(address),
-    display_name: defaultDisplayName(address),
-  });
-}
-
 export const toggleFollow = createServerFn({ method: "POST" })
   .inputValidator((d: { me: string; target: string }) => d)
   .handler(async ({ data }): Promise<{ isFollowing: boolean; followerCount: number }> => {
