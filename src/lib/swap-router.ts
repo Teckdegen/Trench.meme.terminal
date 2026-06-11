@@ -1,5 +1,5 @@
-// Unified swap router. Nad.fun V2 uses one lifecycle-aware router:
-// bonding-curve and graduated DEX trades both quote through NadFunRouter.
+// Unified swap router. Dirol is the primary Monad route aggregator and already
+// includes NadFun as a liquidity source. Direct Nad.fun quotes stay as fallback.
 
 import { useQuery } from "@tanstack/react-query";
 import { createPublicClient, http, type Address } from "viem";
@@ -9,6 +9,7 @@ import {
   NAD_FUN_ROUTER_ABI,
   NADFUN_MAINNET,
 } from "@/lib/abis";
+import { COMMON_TOKENS, useDirolQuote } from "@/lib/dirol";
 import { computeFee, feesConfigured, type FeeKind } from "@/lib/fees";
 
 export type Venue = "nadfun" | "dirol";
@@ -38,7 +39,7 @@ export function useUnifiedQuote(params: {
   isGraduated?: boolean;
 }): UnifiedQuote {
   const { token, side, amount } = params;
-  const venue: Venue = "nadfun";
+  const venue: Venue = "dirol";
 
   const grossIn = (() => {
     try { return BigInt(amount || "0"); } catch { return 0n; }
@@ -48,8 +49,15 @@ export function useUnifiedQuote(params: {
     : { net: grossIn };
   const quoteAmount = netIn.toString();
 
-  const nadfun = useQuery({
-    queryKey: ["nadfun-router-quote", token, side, quoteAmount],
+  const dirol = useDirolQuote({
+    tokenIn: side === "buy" ? COMMON_TOKENS.WMON : token,
+    tokenOut: side === "buy" ? token : COMMON_TOKENS.WMON,
+    amount: quoteAmount,
+    slippageBps: params.slippageBps,
+  });
+
+  const directNadfun = useQuery({
+    queryKey: ["nadfun-router-quote-fallback", token, side, quoteAmount, dirol.error ? "dirol-error" : "dirol-ok"],
     queryFn: async () => {
       if (!token || !/^0x[a-fA-F0-9]{40}$/.test(token)) return "0";
       const amountIn = BigInt(quoteAmount);
@@ -72,18 +80,31 @@ export function useUnifiedQuote(params: {
         return out.toString();
       }
     },
-    enabled: !!token && quoteAmount !== "0",
+    enabled: !!token && quoteAmount !== "0" && !!dirol.error,
     staleTime: 5_000,
   });
 
+  if (dirol.data || !dirol.error) {
+    return {
+      venue,
+      amountIn: amount,
+      amountOut: dirol.data?.amountOut ?? "0",
+      amountOutUsd: dirol.data?.amountOutUsd,
+      priceImpactBps: dirol.data?.priceImpactBps,
+      routes: dirol.data?.routes,
+      isLoading: dirol.isLoading,
+      error: (dirol.error as Error | null) ?? null,
+    };
+  }
+
   return {
-    venue,
+    venue: "nadfun",
     amountIn: amount,
-    amountOut: nadfun.data ?? "0",
+    amountOut: directNadfun.data ?? "0",
     amountOutUsd: undefined,
     priceImpactBps: undefined,
     routes: undefined,
-    isLoading: nadfun.isLoading,
-    error: (nadfun.error as Error | null) ?? null,
+    isLoading: directNadfun.isLoading,
+    error: (directNadfun.error as Error | null) ?? null,
   };
 }

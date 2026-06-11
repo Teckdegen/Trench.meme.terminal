@@ -28,6 +28,8 @@ const NADFUN_ROUTER = "0x8986C8fD44eb85294A725a7e61AF35E76bA26F91" as Address;
 const NADFUN_LEGACY_LENS = "0x7e78A8DE94f21804F7a17F4E8BF9EC2c872187ea" as Address;
 const NADFUN_BASE = process.env.NADFUN_API_BASE ?? "https://api.nad.fun";
 const NADFUN_KEY = process.env.NADFUN_API_KEY ?? "";
+const DIROL_BASE = process.env.DIROL_API_BASE ?? "https://api.dirol.io/api/v1";
+const WMON = "0x3bd359C1119dA7Da1D913D1C4D2B7c461115433A" as Address;
 
 const NADFUN_ROUTER_ABI = parseAbi([
   "function buyWithNative((address token,uint256 amountOutMin,address to,uint256 deadline)) payable returns (uint256)",
@@ -212,6 +214,75 @@ async function getNadfunRoute(pub: ReturnType<typeof createPublicClient>, token:
   return { kind: "legacy" as const, router, amountOut };
 }
 
+async function getDirolSwap(input: {
+  token: Address;
+  owner: Address;
+  amountIn: bigint;
+  isBuy: boolean;
+  slippageBps: number;
+}) {
+  const q = new URLSearchParams({
+    tokenIn: input.isBuy ? WMON : input.token,
+    tokenOut: input.isBuy ? input.token : WMON,
+    amount: input.amountIn.toString(),
+    recipient: input.owner,
+    slippageBps: String(input.slippageBps || 50),
+  });
+  const res = await fetch(`${DIROL_BASE}/swap?${q}`, { headers: { accept: "application/json" } });
+  if (!res.ok) {
+    throw new Error(`dirol /swap ${res.status}: ${await res.text().catch(() => "")}`);
+  }
+  const swap = await res.json();
+  if (!/^0x[a-fA-F0-9]{40}$/.test(String(swap?.tx?.to ?? "")) || !String(swap?.tx?.data ?? "").startsWith("0x")) {
+    throw new Error("dirol /swap returned an invalid transaction");
+  }
+  return swap as {
+    amountOut?: string;
+    tx: {
+      to: Address;
+      data: Hex;
+      value?: string;
+      estimatedGas?: string;
+    };
+  };
+}
+
+async function fireDirol(p: {
+  pub: ReturnType<typeof createPublicClient>;
+  owner: string;
+  ownerAddr: Address;
+  token: Address;
+  amountIn: bigint;
+  netIn: bigint;
+  isBuy: boolean;
+  slippageBps: number;
+}) {
+  const swap = await getDirolSwap({
+    token: p.token,
+    owner: p.ownerAddr,
+    amountIn: p.isBuy ? p.netIn : p.amountIn,
+    isBuy: p.isBuy,
+    slippageBps: p.slippageBps,
+  });
+
+  if (!p.isBuy) {
+    const approveData = encodeFunctionData({
+      abi: ERC20_ABI,
+      functionName: "approve",
+      args: [swap.tx.to, p.amountIn],
+    });
+    const approveHash = await sendViaPara(p.owner, { to: p.token, data: approveData });
+    await p.pub.waitForTransactionReceipt({ hash: approveHash, timeout: 60_000 });
+  }
+
+  return sendViaPara(p.owner, {
+    to: swap.tx.to,
+    data: swap.tx.data,
+    value: p.isBuy ? p.netIn : BigInt(swap.tx.value || "0"),
+    gas: swap.tx.estimatedGas ? BigInt(swap.tx.estimatedGas) : undefined,
+  });
+}
+
 export async function fireWithPara(p: {
   owner: string;
   venue: "nadfun" | "dirol" | "auto";
@@ -242,6 +313,20 @@ export async function fireWithPara(p: {
   }
 
   let hash: Hex;
+  try {
+    hash = await fireDirol({
+      pub,
+      owner: p.owner,
+      ownerAddr,
+      token: p.tokenAddress as Address,
+      amountIn: p.amountIn,
+      netIn,
+      isBuy,
+      slippageBps: p.slippageBps,
+    });
+  } catch (e) {
+    console.warn("[para-exec] Dirol route failed, falling back to direct Nad.fun route", e);
+
   const deadline = BigInt(Math.floor(Date.now() / 1000) + 300);
   const route = await getNadfunRoute(pub, p.tokenAddress as Address, isBuy ? netIn : p.amountIn, isBuy);
   const amountOutMin = applySlippage(route.amountOut, p.slippageBps);
@@ -296,6 +381,7 @@ export async function fireWithPara(p: {
       args: [{ token: p.tokenAddress as Address, amountIn: p.amountIn, amountOutMin, to: ownerAddr, deadline }],
     });
     hash = await sendViaPara(p.owner, { to: route.router, data: sellData });
+  }
   }
 
   if (!isBuy && feeAmount > 0n) {

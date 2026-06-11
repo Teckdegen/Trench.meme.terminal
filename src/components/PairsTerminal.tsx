@@ -328,7 +328,7 @@ function PairCard({ row, mode, quickBuyMon }: { row: DiscoveryRow; mode: ColumnK
     const rawAmount = BigInt(Math.floor(quickBuyMon * 1e18));
     try {
       await run({
-        venue: "nadfun",
+        venue: "dirol",
         side: "buy",
         tokenAddress: row.address as `0x${string}`,
         rawAmount,
@@ -562,7 +562,7 @@ function ExploreMobileCard({ row, quickBuyMon }: { row: DiscoveryRow; quickBuyMo
     if (!(quickBuyMon > 0)) { toast.error("Set a Quick-Buy amount"); return; }
     try {
       await run({
-        venue: "nadfun",
+        venue: "dirol",
         side: "buy",
         tokenAddress: row.address as `0x${string}`,
         rawAmount: BigInt(Math.floor(quickBuyMon * 1e18)),
@@ -677,7 +677,7 @@ function ExploreRow({ row, quickBuyMon }: { row: DiscoveryRow; quickBuyMon: numb
     const rawAmount = BigInt(Math.floor(quickBuyMon * 1e18));
     try {
       await run({
-        venue: "nadfun",
+        venue: "dirol",
         side: "buy",
         tokenAddress: row.address as `0x${string}`,
         rawAmount,

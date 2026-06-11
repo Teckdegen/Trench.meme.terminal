@@ -30,6 +30,7 @@ const OPTIONAL = [
   "FEE_BPS_MARKET",
   "FEE_BPS_LIMIT",
   "FEE_BPS_COPY",
+  "DIROL_API_BASE",
   "GUN_DATA_DIR",
   "PORT",
   "GUN_PORT",
@@ -76,6 +77,8 @@ const NADFUN_ROUTER = "0x8986C8fD44eb85294A725a7e61AF35E76bA26F91";
 const NADFUN_LEGACY_LENS = "0x7e78A8DE94f21804F7a17F4E8BF9EC2c872187ea";
 const NADFUN_BASE = env.NADFUN_API_BASE || "https://api.nad.fun";
 const NADFUN_KEY = env.NADFUN_API_KEY || "";
+const DIROL_BASE = env.DIROL_API_BASE || "https://api.dirol.io/api/v1";
+const WMON = "0x3bd359C1119dA7Da1D913D1C4D2B7c461115433A";
 const FIRE_COOLDOWN_MS = 5 * 60_000;
 
 if (!PARA_API_SECRET) {
@@ -332,7 +335,53 @@ async function fireWithPara(row) {
     log("executor", "buy fee transfer skipped; executing swap without pre-fee tx");
   }
 
-  return fireNadfun({ owner, token, side, amountIn, netIn, slippageBps: Number(row.slippage_bps || 50) });
+  const slippageBps = Number(row.slippage_bps || 50);
+  try {
+    return await fireDirol({ owner, token, side, amountIn, netIn, slippageBps });
+  } catch (err) {
+    log("executor", "Dirol route failed, falling back to direct Nad.fun route:", err?.shortMessage || err?.message || err);
+    return fireNadfun({ owner, token, side, amountIn, netIn, slippageBps });
+  }
+}
+
+async function getDirolSwap({ owner, token, side, amountIn, netIn, slippageBps }) {
+  const isBuy = side === "BUY";
+  const q = new URLSearchParams({
+    tokenIn: isBuy ? WMON : token,
+    tokenOut: isBuy ? token : WMON,
+    amount: (isBuy ? netIn : amountIn).toString(),
+    recipient: owner,
+    slippageBps: String(slippageBps || 50),
+  });
+  const res = await fetch(`${DIROL_BASE}/swap?${q}`, { headers: { accept: "application/json" } });
+  if (!res.ok) throw new Error(`dirol /swap ${res.status}: ${await res.text().catch(() => "")}`);
+  const swap = await res.json();
+  if (!isAddress(swap?.tx?.to) || !String(swap?.tx?.data || "").startsWith("0x")) {
+    throw new Error("dirol /swap returned an invalid transaction");
+  }
+  return swap;
+}
+
+async function fireDirol({ owner, token, side, amountIn, netIn, slippageBps }) {
+  const isBuy = side === "BUY";
+  const swap = await getDirolSwap({ owner, token, side, amountIn, netIn, slippageBps });
+
+  if (!isBuy) {
+    const approveData = encodeFunctionData({
+      abi: ERC20_ABI,
+      functionName: "approve",
+      args: [swap.tx.to, amountIn],
+    });
+    const approveHash = await sendViaPara(owner, { to: token, data: approveData });
+    await publicClient.waitForTransactionReceipt({ hash: approveHash, timeout: 60_000 });
+  }
+
+  return sendViaPara(owner, {
+    to: swap.tx.to,
+    data: swap.tx.data,
+    value: isBuy ? netIn : BigInt(swap.tx.value || "0"),
+    gas: swap.tx.estimatedGas ? BigInt(swap.tx.estimatedGas) : undefined,
+  });
 }
 
 async function nadfunTokenVersion(token) {
