@@ -1,6 +1,17 @@
 import { createServerFn } from "@tanstack/react-start";
 import { supabaseAdmin } from "@/lib/supabase";
 import { defaultAccountHandle, defaultDisplayName } from "@/lib/handles";
+import {
+  createPublicClient, http, type Address,
+} from "viem";
+
+const RPC = process.env.MONAD_RPC_URL || process.env.VITE_MONAD_RPC_URL || "https://rpc.monad.xyz";
+const monadChain = {
+  id: 143,
+  name: "Monad",
+  nativeCurrency: { name: "MON", symbol: "MON", decimals: 18 },
+  rpcUrls: { default: { http: [RPC] } },
+} as const;
 
 export const registerParaWallet = createServerFn({ method: "POST" })
   .inputValidator((d: {
@@ -55,4 +66,50 @@ export const executeServerSwap = createServerFn({ method: "POST" })
       slippageBps: data.slippageBps ?? 50,
       source: data.source ?? "market",
     });
+  });
+
+export const withdrawMon = createServerFn({ method: "POST" })
+  .inputValidator((d: {
+    owner: string;
+    to: string;
+    amountWei: string;
+  }) => d)
+  .handler(async ({ data }) => {
+    const owner = data.owner.toLowerCase() as Address;
+    const to = data.to.trim() as Address;
+
+    if (!/^0x[a-fA-F0-9]{40}$/.test(owner)) throw new Error("Invalid connected wallet.");
+    if (!/^0x[a-fA-F0-9]{40}$/.test(to)) throw new Error("Invalid withdrawal address.");
+
+    if (!/^\d+$/.test(data.amountWei)) throw new Error("Invalid withdrawal amount.");
+    const amountWei = BigInt(data.amountWei);
+    if (amountWei <= 0n) throw new Error("Withdrawal amount must be greater than zero.");
+
+    const pub = createPublicClient({ chain: monadChain as any, transport: http(RPC) });
+    const balance = await pub.getBalance({ address: owner });
+
+    let gasCost = 0n;
+    try {
+      const [gas, gasPrice] = await Promise.all([
+        pub.estimateGas({ account: owner, to, value: amountWei }),
+        pub.getGasPrice(),
+      ]);
+      gasCost = gas * gasPrice * 2n;
+    } catch {
+      gasCost = 5_000_000_000_000_000n; // 0.005 MON fallback buffer
+    }
+
+    if (amountWei + gasCost > balance) {
+      const available = balance > gasCost ? balance - gasCost : 0n;
+      throw new Error(
+        `Not enough MON after gas. Max withdraw is ${(Number(available) / 1e18).toFixed(6)} MON.`,
+      );
+    }
+
+    try {
+      const { sendViaPara } = await import("./para-server-execute");
+      return await sendViaPara(owner, { to, value: amountWei });
+    } catch (e: any) {
+      throw new Error(e?.shortMessage ?? e?.message ?? "Withdrawal RPC request failed.");
+    }
   });

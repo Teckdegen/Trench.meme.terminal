@@ -5,7 +5,8 @@ import { APP_NAME, APP_LOGO } from "@/lib/brand";
 import { useTokenSearch, type DirolToken } from "@/lib/dirol";
 import { useMe } from "@/lib/useMe";
 import { useIdentity, labelFor } from "@/lib/identity";
-import { useMonBalance, sendMon } from "@/lib/wallet-tx";
+import { useMonBalance } from "@/lib/wallet-tx";
+import { withdrawMon } from "@/lib/para-session";
 import type { Hex } from "viem";
 import { MonLogo } from "@/components/MonLogo";
 import { ModalHeader, ModalShell } from "@/components/ui/modal-shell";
@@ -264,22 +265,25 @@ function WithdrawView({ onBack, onClose }: { onBack: () => void; onClose: () => 
   const [hash, setHash] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
+  const gasBufferMon = 0.005;
+  const maxWithdraw = Math.max(0, balance - gasBufferMon);
   const setPct = (pct: number) =>
-    setAmount((balance * pct).toFixed(6));
+    setAmount((maxWithdraw * pct).toFixed(6));
   const validTo = /^0x[a-fA-F0-9]{40}$/.test(to.trim());
   const amt = Number(amount);
-  const valid = me && validTo && amt > 0 && amt <= balance;
+  const valid = me && validTo && amt > 0 && amt <= maxWithdraw;
 
   const send = async () => {
     if (!valid || !me) return;
     setSending(true); setErr(null); setHash(null);
     try {
-      const h: Hex = await sendMon({
-        from: me as `0x${string}`,
+      const amountWei = BigInt(Math.floor(amt * 1e18)).toString();
+      const h = await withdrawMon({ data: {
+        owner: me,
         to: to.trim() as `0x${string}`,
-        amountMon: amt,
-      });
-      setHash(h);
+        amountWei,
+      } });
+      setHash(h as Hex);
       setAmount("");
       setTimeout(() => { refreshMon(); }, 3000);
     } catch (e: any) {
@@ -357,8 +361,11 @@ function WithdrawView({ onBack, onClose }: { onBack: () => void; onClose: () => 
 
         <div className="flex items-center justify-between text-xs">
           <span className="text-muted-foreground">Available</span>
-          <span className="font-semibold">{balance.toFixed(6)} {symbol}</span>
+          <span className="font-semibold">{maxWithdraw.toFixed(6)} {symbol}</span>
         </div>
+        <p className="text-[11px] text-muted-foreground -mt-1">
+          Max leaves ~{gasBufferMon} MON for network gas.
+        </p>
 
         {err && <p className="text-xs text-down">{err}</p>}
 

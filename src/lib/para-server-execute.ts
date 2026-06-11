@@ -83,7 +83,7 @@ async function paraClientFor(owner: string) {
   });
 }
 
-async function sendViaPara(owner: string, opts: {
+export async function sendViaPara(owner: string, opts: {
   to: Address;
   data?: Hex;
   value?: bigint;
