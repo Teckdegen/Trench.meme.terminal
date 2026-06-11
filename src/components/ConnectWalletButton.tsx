@@ -2,9 +2,10 @@
 
 import { useState } from "react";
 import { Wallet, LogOut, Copy, Check } from "lucide-react";
-import { useMe, setMe } from "@/lib/useMe";
+import { useMe } from "@/lib/useMe";
 import { useIdentity, labelFor } from "@/lib/identity";
 import { useParaSdk } from "@/components/ParaWalletProvider";
+import { signOutEverywhere } from "@/lib/auth-signout";
 
 export function ConnectWalletButton({ compact = false }: { compact?: boolean }) {
   const me = useMe();
@@ -34,7 +35,7 @@ export function ConnectWalletButton({ compact = false }: { compact?: boolean }) 
           {copied ? <Check className="size-3 text-up" /> : <Copy className="size-3 text-muted-foreground" />}
         </button>
         {mod ? <ParaLogoutBtn hooks={mod} /> : (
-          <button onClick={() => setMe(undefined)} className="size-7 grid place-items-center rounded-full hover:bg-white/10 text-muted-foreground" title="Sign out">
+          <button onClick={() => void signOutEverywhere()} className="size-7 grid place-items-center rounded-full hover:bg-white/10 text-muted-foreground" title="Sign out">
             <LogOut className="size-3.5" />
           </button>
         )}
@@ -73,8 +74,7 @@ function ParaLogoutBtn({ hooks }: { hooks: any }) {
   const useLogout = hooks.useLogout;
   const p = useLogout?.() ?? { logoutAsync: async () => {} };
   const signOut = async () => {
-    try { await p.logoutAsync?.(); } catch {}
-    setMe(undefined);
+    await signOutEverywhere(p);
   };
   return (
     <button

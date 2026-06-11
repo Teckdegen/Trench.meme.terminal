@@ -1,11 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { PageTitle } from "@/components/SimpleLayout";
-import { useMe, setMe } from "@/lib/useMe";
+import { useMe } from "@/lib/useMe";
 import { Zap, Fuel, Gauge, Loader2, LogOut } from "lucide-react";
 import { BlocklistManager } from "@/components/BlocklistManager";
 import { useParaSdk } from "@/components/ParaWalletProvider";
 import { useDocumentTitle } from "@/lib/useDocumentTitle";
+import { signOutEverywhere } from "@/lib/auth-signout";
 import {
   useTradePrefs,
   SLIPPAGE_OPTIONS,
@@ -144,16 +145,9 @@ function SignOutSection() {
   const signOut = async () => {
     setBusy(true);
     try {
-      // Can't call a hook outside a component — we read it via the bridge
-      // clear local state if the SDK has not finished loading.
+      await signOutEverywhere();
     } finally {
-      try {
-        // Hard sign-out path: just clear `me`. Para's session cookie is
-        // also cleared by the inline ParaLogout component below.
-        setMe(undefined);
-      } finally {
-        setBusy(false);
-      }
+      setBusy(false);
     }
   };
 
@@ -196,9 +190,13 @@ function ParaLogoutButton({ hooks }: { hooks: any }) {
   const [busy, setBusy] = useState(false);
   const click = async () => {
     setBusy(true);
-    try { await p.logoutAsync?.(); } catch (e) { console.warn("[settings] logout:", e); }
-    setMe(undefined);
-    setBusy(false);
+    try {
+      await signOutEverywhere(p);
+    } catch (e) {
+      console.warn("[settings] logout:", e);
+    } finally {
+      setBusy(false);
+    }
   };
   return (
     <button

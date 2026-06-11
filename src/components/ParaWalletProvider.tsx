@@ -5,6 +5,7 @@ import { setMe, useMe } from "@/lib/useMe";
 import { getParaConfig } from "@/lib/para-config";
 import { APP_NAME, APP_LOGO } from "@/lib/brand";
 import { ParaWalletBridge } from "@/components/ParaWalletBridge";
+import { isSigningOut } from "@/lib/auth-signout";
 
 type Config = { apiKey: string | null };
 const ParaSdkContext = createContext<any>(null);
@@ -124,10 +125,15 @@ function ParaSync({ hooks }: { hooks: any }) {
     Object.values(client?.wallets ?? {})?.find((w: any) => w?.type === "EVM")?.address;
 
   useEffect(() => {
+    if (isSigningOut()) {
+      if (me) setMe(undefined);
+      return;
+    }
     const addr = account?.isConnected ? address?.toLowerCase() : undefined;
     if (addr && addr !== me) setMe(addr);
     else if (addr && addr === me) setMe(addr);
-  }, [account?.isConnected, address, me]);
+    else if (!account?.isLoading && !account?.isConnected && me) setMe(undefined);
+  }, [account?.isConnected, account?.isLoading, address, me]);
 
   useEffect(() => {
     if (client) (window as any).__trenchParaClient = client;
