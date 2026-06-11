@@ -41,6 +41,7 @@ import {
   useCabalTyping,
   usePendingInvites,
   retryPendingInvites,
+  inviteAddressToCabal,
   kickMemberFromCabal,
   rotateCabalKey,
   type CabalMeta,
@@ -109,6 +110,7 @@ function CabalsPage() {
       }
       const row = await createCabal({ name, topic, image_uri: image, host_address: me, privacy: "invite", invitees: resolved });
       if (row) { setActiveId(row.id); setCreating(false); setChannel({ kind: "text" }); }
+      else setJoinError("Could not create cabal. Check the Gun relay connection.");
     } catch (e) { console.error(e); setJoinError("Could not create cabal"); }
   };
 
@@ -1260,6 +1262,7 @@ function MembersRail({
   const members = useCabalMembers(cabal.id);
   const pending = usePendingInvites(cabal.id, me);
   const [busy, setBusy] = useState<string | null>(null);
+  const [inviteTarget, setInviteTarget] = useState("");
   const isOwner = me?.toLowerCase() === cabal.host_address.toLowerCase();
   const myRole = members.find((m: any) => m.account_address?.toLowerCase() === me?.toLowerCase())?.role;
   const canKick = isOwner || myRole === "mod" || myRole === "owner";
@@ -1282,6 +1285,25 @@ function MembersRail({
     if (!me) return;
     setBusy("retry");
     try { await retryPendingInvites(cabal.id, me); } finally { setBusy(null); }
+  };
+
+  const invite = async () => {
+    if (!me || !isOwner || !inviteTarget.trim()) return;
+    setBusy("invite");
+    try {
+      const addr = await resolveToAddress(inviteTarget);
+      if (!addr) {
+        alert("User not found. Try their @handle or wallet address.");
+        return;
+      }
+      await inviteAddressToCabal(cabal, me, addr);
+      setInviteTarget("");
+    } catch (e: any) {
+      console.error(e);
+      alert(`Couldn't invite member: ${e?.message ?? e}`);
+    } finally {
+      setBusy(null);
+    }
   };
 
   return (
@@ -1354,6 +1376,33 @@ function MembersRail({
         {/* Owner tools */}
         {isOwner && (
           <Section label="Owner tools">
+            <div className="mx-2 mb-2 rounded-lg border border-white/5 bg-white/[0.03] p-2">
+              <div className="flex items-center gap-1.5">
+                <input
+                  value={inviteTarget}
+                  onChange={(e) => setInviteTarget(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      void invite();
+                    }
+                  }}
+                  placeholder="@handle or 0x..."
+                  className="min-w-0 flex-1 h-8 bg-transparent text-[13px] focus:outline-none"
+                />
+                <button
+                  onClick={() => void invite()}
+                  disabled={busy === "invite" || !inviteTarget.trim()}
+                  className="size-8 grid place-items-center rounded-md lit-purple disabled:opacity-40"
+                  title="Invite member"
+                >
+                  <UserPlus className="size-4" />
+                </button>
+              </div>
+              <p className="mt-1 text-[10px] text-muted-foreground">
+                Sends them a DM with the cabal name and invite code.
+              </p>
+            </div>
             <button onClick={rotate} disabled={busy === "rotate"}
                     className="mx-2 my-px h-9 px-2 rounded flex items-center gap-2 text-muted-foreground hover:bg-white/5 hover:text-foreground disabled:opacity-40">
               <RefreshCw className={`size-4 ${busy === "rotate" ? "animate-spin" : ""}`} />

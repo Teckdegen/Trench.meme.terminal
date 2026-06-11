@@ -18,6 +18,7 @@ import {
   GUN_ENABLED as GUN_CHAT,
   useGunChat,
   gunSend,
+  gunPutAck,
   gunDeleteMessage,
   gunEditMessage,
   gunToggleReaction,
@@ -26,6 +27,7 @@ import {
   useGunTyping,
   type GunMessage,
 } from "@/lib/gun";
+import { sendDM } from "@/lib/gun-dms";
 
 export type CabalMeta = {
   id: string;
@@ -97,6 +99,29 @@ function genInviteCode() {
   let s = "";
   for (let i = 0; i < 8; i++) s += a[Math.floor(Math.random() * a.length)];
   return s;
+}
+
+function shortAddr(addr: string) {
+  return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
+}
+
+function cabalInviteMessage(inviter: string, cabal: Pick<CabalMeta, "name" | "invite_code">) {
+  return [
+    `${shortAddr(inviter)} invited you to join ${cabal.name}.`,
+    "",
+    `Invite code: ${cabal.invite_code}`,
+    "",
+    "Open Cabals and paste the code to join.",
+  ].join("\n");
+}
+
+async function sendCabalInviteDM(inviter: string, invitee: string, cabal: CabalMeta) {
+  if (inviter.toLowerCase() === invitee.toLowerCase()) return;
+  try {
+    await sendDM(inviter, invitee, cabalInviteMessage(inviter, cabal));
+  } catch (e) {
+    console.warn("[cabal] invite DM failed", e);
+  }
 }
 
 // ─────────────── Cabal list / CRUD ─────────────────────────────────────
@@ -176,8 +201,8 @@ export async function createCabal(input: {
     created_at: Date.now(),
   };
 
-  cabalNode(gun, id).get("meta").put(meta);
-  gun.get(NS).get("cabals").get("by-code").get(invite_code).put(id);
+  await gunPutAck(cabalNode(gun, id).get("meta"), meta);
+  await gunPutAck(gun.get(NS).get("cabals").get("by-code").get(invite_code), id);
   await joinCabal(id, host, "owner");
 
   // Mint the cabal's symmetric AES-256 key and wrap it for the creator.
@@ -192,15 +217,36 @@ export async function createCabal(input: {
   for (const inv of input.invitees ?? []) {
     const addr = inv.replace(/^@/, "").trim().toLowerCase();
     if (addr && /^0x[a-f0-9]{40}$/.test(addr)) {
-      await joinCabal(id, addr, "member");
-      // Try to wrap the cabal key for the invitee. Silently skips if the
-      // invitee hasn't published a pubkey yet (they will when they first
-      // open the app — host can re-invite then to retro-grant access).
-      try { await inviteMemberToCabal(id, host, addr); } catch { /* invitee not registered yet */ }
+      try {
+        await inviteAddressToCabal(meta, host, addr);
+      } catch (e) {
+        console.warn("[cabal] invite failed", e);
+      }
     }
   }
 
   return meta;
+}
+
+export async function inviteAddressToCabal(
+  cabal: CabalMeta,
+  inviter: string,
+  invitee: string,
+): Promise<{ status: "granted" | "pending" | "dm_only" }> {
+  const host = inviter.toLowerCase();
+  const addr = invitee.replace(/^@/, "").trim().toLowerCase();
+  if (!/^0x[a-f0-9]{40}$/.test(addr)) throw new Error("Invalid invitee address");
+
+  await joinCabal(cabal.id, addr, "member");
+  let status: "granted" | "pending" | "dm_only" = "dm_only";
+  try {
+    const res = await inviteMemberToCabal(cabal.id, host, addr);
+    status = res.status;
+  } catch (e) {
+    console.warn("[cabal] key grant failed; invite code DM still sent", e);
+  }
+  await sendCabalInviteDM(host, addr, cabal);
+  return { status };
 }
 
 /** Patch a cabal's editable meta fields (name, topic, image_uri). Owner
@@ -264,8 +310,8 @@ export async function joinCabal(cabalId: string, me: string, role: CabalMember["
     trade_feed_enabled: true,
     joined_at: Date.now(),
   };
-  cabalNode(gun, cabalId).get("members").get(addr).put(row);
-  gun.get(NS).get("users").get(addr).get("cabals").get(cabalId).put({
+  await gunPutAck(cabalNode(gun, cabalId).get("members").get(addr), row);
+  await gunPutAck(gun.get(NS).get("users").get(addr).get("cabals").get(cabalId), {
     joined_at: row.joined_at,
     trade_feed_enabled: row.trade_feed_enabled,
   });
