@@ -88,9 +88,6 @@ function ParaInner({ apiKey, children }: { apiKey: string; children: ReactNode }
         recoverySecretStepEnabled: true,
         twoFactorAuthEnabled: false,
       }}
-      externalWalletConfig={{
-        wallets: [],
-      }}
     >
       <ParaSdkContext.Provider value={Mod}>
         {children}
