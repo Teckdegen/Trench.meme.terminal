@@ -4,6 +4,7 @@ import { PageTitle } from "@/components/SimpleLayout";
 import { useMe, setMe } from "@/lib/useMe";
 import { Zap, Fuel, Gauge, Loader2, LogOut } from "lucide-react";
 import { BlocklistManager } from "@/components/BlocklistManager";
+import { useParaSdk } from "@/components/ParaWalletProvider";
 import { useDocumentTitle } from "@/lib/useDocumentTitle";
 import {
   useTradePrefs,
@@ -137,12 +138,8 @@ function SettingsPage() {
 // into the settings bundle) and clears our local `me` cache so the
 // useMe() bus immediately notifies every component you're signed out.
 function SignOutSection() {
-  const [mod, setMod] = useState<any>(null);
+  const mod = useParaSdk();
   const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    import("@getpara/react-sdk-lite").then(setMod).catch(() => {});
-  }, []);
 
   const signOut = async () => {
     setBusy(true);

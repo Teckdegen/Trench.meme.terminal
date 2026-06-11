@@ -10,20 +10,15 @@
 // automatically once `me` becomes defined (so the click "completes" after
 // they finish authing).
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { useMe } from "@/lib/useMe";
+import { useParaSdk } from "@/components/ParaWalletProvider";
 
 type Pending = (() => void | Promise<void>) | null;
 
 export function useRequireAuth() {
   const me = useMe();
-  const [paraHooks, setParaHooks] = useState<any>(null);
   const pendingRef = useRef<Pending>(null);
-
-  useEffect(() => {
-    if (paraHooks) return;
-    import("@getpara/react-sdk-lite").then((m: any) => setParaHooks(m)).catch(() => {});
-  }, [paraHooks]);
 
   // When the user finishes auth, drain any pending action.
   useEffect(() => {
@@ -40,7 +35,6 @@ export function useRequireAuth() {
   return (action: () => void | Promise<void>) => {
     if (me) return action();
     pendingRef.current = action;
-    void paraHooks; // kept for symmetry — actual login() lives in Opener below
     window.dispatchEvent(new Event("trench.require-auth"));
   };
 }
@@ -53,11 +47,7 @@ export function useRequireAuth() {
  */
 export function RequireAuthModalHost() {
   const me = useMe();
-  const [hooks, setHooks] = useState<any>(null);
-
-  useEffect(() => {
-    import("@getpara/react-sdk-lite").then((m: any) => setHooks(m)).catch(() => {});
-  }, []);
+  const hooks = useParaSdk();
 
   if (me || !hooks) return null;
   return <Opener hooks={hooks} />;

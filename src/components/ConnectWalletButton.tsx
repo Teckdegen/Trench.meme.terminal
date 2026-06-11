@@ -1,19 +1,16 @@
 // Topbar wallet pill. Uses Para hooks and opens the Para modal.
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Wallet, LogOut, Copy, Check } from "lucide-react";
 import { useMe, setMe } from "@/lib/useMe";
 import { useIdentity, labelFor } from "@/lib/identity";
+import { useParaSdk } from "@/components/ParaWalletProvider";
 
 export function ConnectWalletButton({ compact = false }: { compact?: boolean }) {
   const me = useMe();
   const myId = useIdentity(me);
-  const [mod, setMod] = useState<any>(null);
+  const mod = useParaSdk();
   const [copied, setCopied] = useState(false);
-
-  useEffect(() => {
-    import("@getpara/react-sdk-lite").then(setMod).catch(() => {});
-  }, []);
 
   const copy = () => {
     if (!me) return;

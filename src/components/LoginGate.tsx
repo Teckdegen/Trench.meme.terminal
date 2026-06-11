@@ -8,6 +8,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useMe } from "@/lib/useMe";
 import { APP_NAME, APP_LOGO } from "@/lib/brand";
+import { useParaSdk } from "@/components/ParaWalletProvider";
 
 // Routes that are viewable WITHOUT logging in. The gate still mounts the
 // Para modal so users can sign in if they want, but it doesn't force them.
@@ -22,7 +23,7 @@ function isPublicRoute(pathname: string): boolean {
 
 export function LoginGate() {
   const me = useMe();
-  const [hooks, setHooks] = useState<any>(null);
+  const hooks = useParaSdk();
   const [pathname, setPathname] = useState(() =>
     typeof window === "undefined" ? "/" : window.location.pathname,
   );
@@ -41,13 +42,6 @@ export function LoginGate() {
       history.pushState = origPush;
       history.replaceState = origReplace;
     };
-  }, []);
-
-  // Lazy-load Para hooks
-  useEffect(() => {
-    let cancel = false;
-    import("@getpara/react-sdk-lite").then((m: any) => { if (!cancel) setHooks(m); }).catch(() => {});
-    return () => { cancel = true; };
   }, []);
 
   // Don't show the gate while Para is still hydrating — that's what caused

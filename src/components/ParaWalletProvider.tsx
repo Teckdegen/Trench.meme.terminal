@@ -1,12 +1,17 @@
 import "@getpara/react-sdk-lite/styles.css";
 
-import { Suspense, useEffect, useState, type ReactNode } from "react";
+import { Suspense, createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { setMe, useMe } from "@/lib/useMe";
 import { getParaConfig } from "@/lib/para-config";
 import { APP_NAME, APP_LOGO } from "@/lib/brand";
 import { ParaWalletBridge } from "@/components/ParaWalletBridge";
 
 type Config = { apiKey: string | null };
+const ParaSdkContext = createContext<any>(null);
+
+export function useParaSdk() {
+  return useContext(ParaSdkContext);
+}
 
 export function ParaWalletProvider({ children }: { children: ReactNode }) {
   const [config, setConfig] = useState<Config | null>(null);
@@ -87,9 +92,11 @@ function ParaInner({ apiKey, children }: { apiKey: string; children: ReactNode }
         wallets: [],
       }}
     >
-      {children}
-      <ParaSync hooks={Mod} />
-      <ParaWalletBridge hooks={Mod} />
+      <ParaSdkContext.Provider value={Mod}>
+        {children}
+        <ParaSync hooks={Mod} />
+        <ParaWalletBridge hooks={Mod} />
+      </ParaSdkContext.Provider>
     </ParaProvider>
   );
 }
