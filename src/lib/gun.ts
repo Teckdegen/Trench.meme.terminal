@@ -23,7 +23,8 @@ export function gunPutAck(node: any, payload: unknown): Promise<void> {
     const timer = setTimeout(() => {
       if (settled) return;
       settled = true;
-      reject(new Error("Gun relay did not acknowledge the write."));
+      console.warn("[gun] relay did not acknowledge the write; continuing with local state.");
+      resolve();
     }, 8_000);
     node.put(payload, (ack: any) => {
       if (settled) return;

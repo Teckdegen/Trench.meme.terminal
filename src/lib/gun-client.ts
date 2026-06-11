@@ -47,10 +47,47 @@ export const GUN_ENABLED = PEERS.length > 0;
 
 let _gun: any | null = null;
 
+type TimeoutWithEach = typeof globalThis.setTimeout & {
+  each?: (
+    list: unknown,
+    cb?: (value: unknown, key: string | number) => void,
+    opt?: number | { wait?: number; chunk?: number },
+  ) => void;
+};
+
+function installGunTimerCompat(): void {
+  if (typeof window === "undefined") return;
+  const timer = globalThis.setTimeout as TimeoutWithEach;
+  if (typeof timer.each === "function") return;
+
+  timer.each = (list, cb, opt) => {
+    if (typeof cb !== "function") return;
+    const source = (list ?? {}) as Record<string, unknown> | unknown[];
+    const keys = Array.isArray(source)
+      ? source.map((_, i) => i)
+      : Object.keys(source);
+    const wait = typeof opt === "number" ? opt : opt?.wait ?? 0;
+    const chunk = typeof opt === "object" ? opt?.chunk ?? 256 : 256;
+    let i = 0;
+
+    const run = () => {
+      const end = Math.min(i + chunk, keys.length);
+      for (; i < end; i++) {
+        const key = keys[i];
+        cb((source as any)[key], key);
+      }
+      if (i < keys.length) timer(run, wait);
+    };
+
+    run();
+  };
+}
+
 export async function getGun(): Promise<any | null> {
   if (!GUN_ENABLED) return null;
   if (_gun) return _gun;
   try {
+    installGunTimerCompat();
     const Gun: any = await import(/* @vite-ignore */ "gun");
     const G = Gun.default ?? Gun;
     _gun = G({ peers: PEERS, localStorage: true, radisk: true });
