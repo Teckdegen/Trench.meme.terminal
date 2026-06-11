@@ -1,10 +1,21 @@
 import {
-  createPublicClient, http, encodeFunctionData, parseAbi,
+  createPublicClient, fallback, http, encodeFunctionData, parseAbi,
   type Address, type Hex,
 } from "viem";
 import { supabaseAdmin } from "@/lib/supabase";
 
-const RPC = process.env.MONAD_RPC_URL || "https://rpc.monad.xyz";
+const RPC_URLS = [
+  process.env.MONAD_RPC_URL,
+  process.env.VITE_MONAD_RPC_URL,
+  ...(process.env.MONAD_RPC_FALLBACK_URLS ?? "").split(","),
+  "https://rpc.monad.xyz",
+].map((url) => url?.trim()).filter((url): url is string => !!url);
+const UNIQUE_RPC_URLS = [...new Set(RPC_URLS)];
+const RPC = UNIQUE_RPC_URLS[0];
+const monadTransport = fallback(UNIQUE_RPC_URLS.map((url) => http(url)), {
+  rank: false,
+  retryCount: 1,
+});
 
 const monadChain = {
   id: 143,
@@ -86,7 +97,7 @@ async function paraClientFor(owner: string) {
     walletClientConfig: {
       account: owner as Address,
       chain: monadChain as any,
-      transport: http(RPC),
+      transport: monadTransport,
     },
   });
 }
@@ -97,7 +108,7 @@ export async function sendViaPara(owner: string, opts: {
   value?: bigint;
   gas?: bigint;
 }): Promise<Hex> {
-  const pub = createPublicClient({ chain: monadChain as any, transport: http(RPC) });
+  const pub = createPublicClient({ chain: monadChain as any, transport: monadTransport });
   let gas = opts.gas;
   if (!gas) {
     try {
@@ -153,7 +164,7 @@ export async function fireWithPara(p: {
     venue = tok && (tok as any).is_graduated ? "dirol" : "nadfun";
   }
 
-  const pub = createPublicClient({ chain: monadChain as any, transport: http(RPC) });
+  const pub = createPublicClient({ chain: monadChain as any, transport: monadTransport });
   const ownerAddr = p.owner as Address;
 
   const FEE_BPS: Record<string, number> = {

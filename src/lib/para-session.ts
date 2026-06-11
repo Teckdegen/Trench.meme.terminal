@@ -2,10 +2,21 @@ import { createServerFn } from "@tanstack/react-start";
 import { supabaseAdmin } from "@/lib/supabase";
 import { defaultAccountHandle, defaultDisplayName } from "@/lib/handles";
 import {
-  createPublicClient, http, type Address,
+  createPublicClient, fallback, http, type Address,
 } from "viem";
 
-const RPC = process.env.MONAD_RPC_URL || process.env.VITE_MONAD_RPC_URL || "https://rpc.monad.xyz";
+const RPC_URLS = [
+  process.env.MONAD_RPC_URL,
+  process.env.VITE_MONAD_RPC_URL,
+  ...(process.env.MONAD_RPC_FALLBACK_URLS ?? "").split(","),
+  "https://rpc.monad.xyz",
+].map((url) => url?.trim()).filter((url): url is string => !!url);
+const UNIQUE_RPC_URLS = [...new Set(RPC_URLS)];
+const RPC = UNIQUE_RPC_URLS[0];
+const monadTransport = fallback(UNIQUE_RPC_URLS.map((url) => http(url)), {
+  rank: false,
+  retryCount: 1,
+});
 const monadChain = {
   id: 143,
   name: "Monad",
@@ -86,7 +97,7 @@ export const withdrawMon = createServerFn({ method: "POST" })
     const amountWei = BigInt(data.amountWei);
     if (amountWei <= 0n) throw new Error("Withdrawal amount must be greater than zero.");
 
-    const pub = createPublicClient({ chain: monadChain as any, transport: http(RPC) });
+    const pub = createPublicClient({ chain: monadChain as any, transport: monadTransport });
     const balance = await pub.getBalance({ address: owner });
 
     let gasCost = 0n;
