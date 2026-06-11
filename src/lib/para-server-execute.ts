@@ -169,7 +169,13 @@ export async function sendViaPara(owner: string, opts: {
   }
 }
 
-async function nadfunTokenVersion(token: string): Promise<"V1" | "V2" | null> {
+type NadfunTokenMeta = {
+  version: "V1" | "V2" | null;
+  marketType: string | null;
+  isGraduated: boolean | null;
+};
+
+async function nadfunTokenMeta(token: string): Promise<NadfunTokenMeta | null> {
   try {
     const res = await fetch(`${NADFUN_BASE}/token/metadata/${token}`, {
       headers: { accept: "application/json", ...(NADFUN_KEY ? { "X-API-Key": NADFUN_KEY } : {}) },
@@ -177,10 +183,26 @@ async function nadfunTokenVersion(token: string): Promise<"V1" | "V2" | null> {
     if (!res.ok) return null;
     const json = await res.json();
     const version = json?.token_info?.version;
-    return version === "V1" || version === "V2" ? version : null;
+    const marketType = typeof json?.market_info?.market_type === "string"
+      ? json.market_info.market_type
+      : null;
+    const isGraduated = typeof json?.token_info?.is_graduated === "boolean"
+      ? json.token_info.is_graduated
+      : null;
+    return {
+      version: version === "V1" || version === "V2" ? version : null,
+      marketType,
+      isGraduated,
+    };
   } catch {
     return null;
   }
+}
+
+function isNadfunCurve(meta: NadfunTokenMeta | null) {
+  if (!meta) return false;
+  if (meta.isGraduated === false) return true;
+  return /CURVE/i.test(meta.marketType ?? "");
 }
 
 function applySlippage(amount: bigint, slippageBps: number) {
@@ -190,7 +212,7 @@ function applySlippage(amount: bigint, slippageBps: number) {
 }
 
 async function getNadfunRoute(pub: ReturnType<typeof createPublicClient>, token: Address, amountIn: bigint, isBuy: boolean) {
-  const version = await nadfunTokenVersion(token);
+  const version = (await nadfunTokenMeta(token))?.version ?? null;
   if (version !== "V1") {
     try {
       const amountOut = await pub.readContract({
@@ -283,6 +305,69 @@ async function fireDirol(p: {
   });
 }
 
+async function fireDirectNadfun(p: {
+  pub: ReturnType<typeof createPublicClient>;
+  owner: string;
+  ownerAddr: Address;
+  token: Address;
+  amountIn: bigint;
+  netIn: bigint;
+  isBuy: boolean;
+  slippageBps: number;
+}) {
+  const deadline = BigInt(Math.floor(Date.now() / 1000) + 300);
+  const route = await getNadfunRoute(p.pub, p.token, p.isBuy ? p.netIn : p.amountIn, p.isBuy);
+  const amountOutMin = applySlippage(route.amountOut, p.slippageBps);
+
+  if (route.kind === "v2") {
+    if (p.isBuy) {
+      const data = encodeFunctionData({
+        abi: NADFUN_ROUTER_ABI,
+        functionName: "buyWithNative",
+        args: [{ token: p.token, amountOutMin, to: p.ownerAddr, deadline }],
+      });
+      return sendViaPara(p.owner, { to: NADFUN_ROUTER, data, value: p.netIn });
+    }
+
+    const approveData = encodeFunctionData({
+      abi: ERC20_ABI,
+      functionName: "approve",
+      args: [NADFUN_ROUTER, p.amountIn],
+    });
+    const ah = await sendViaPara(p.owner, { to: p.token, data: approveData });
+    await p.pub.waitForTransactionReceipt({ hash: ah });
+    const sellData = encodeFunctionData({
+      abi: NADFUN_ROUTER_ABI,
+      functionName: "sellToNative",
+      args: [{ token: p.token, amountIn: p.amountIn, amountOutMin, to: p.ownerAddr, deadline }],
+    });
+    return sendViaPara(p.owner, { to: NADFUN_ROUTER, data: sellData });
+  }
+
+  if (p.isBuy) {
+    const data = encodeFunctionData({
+      abi: NADFUN_LEGACY_ROUTER_ABI,
+      functionName: "buy",
+      args: [{ token: p.token, amountOutMin, to: p.ownerAddr, deadline }],
+    });
+    return sendViaPara(p.owner, { to: route.router, data, value: p.netIn });
+  }
+
+  const approveData = encodeFunctionData({
+    abi: ERC20_ABI,
+    functionName: "approve",
+    args: [route.router, p.amountIn],
+  });
+  const ah = await sendViaPara(p.owner, { to: p.token, data: approveData });
+  await p.pub.waitForTransactionReceipt({ hash: ah });
+  const sellData = encodeFunctionData({
+    abi: NADFUN_LEGACY_ROUTER_ABI,
+    functionName: "sell",
+    args: [{ token: p.token, amountIn: p.amountIn, amountOutMin, to: p.ownerAddr, deadline }],
+  });
+  return sendViaPara(p.owner, { to: route.router, data: sellData });
+}
+
 export async function fireWithPara(p: {
   owner: string;
   venue: "nadfun" | "dirol" | "auto";
@@ -313,75 +398,45 @@ export async function fireWithPara(p: {
   }
 
   let hash: Hex;
-  try {
-    hash = await fireDirol({
+  const token = p.tokenAddress as Address;
+  const directNadfun = isNadfunCurve(await nadfunTokenMeta(p.tokenAddress));
+
+  if (directNadfun) {
+    hash = await fireDirectNadfun({
       pub,
       owner: p.owner,
       ownerAddr,
-      token: p.tokenAddress as Address,
+      token,
       amountIn: p.amountIn,
       netIn,
       isBuy,
       slippageBps: p.slippageBps,
     });
-  } catch (e) {
-    console.warn("[para-exec] Dirol route failed, falling back to direct Nad.fun route", e);
-
-  const deadline = BigInt(Math.floor(Date.now() / 1000) + 300);
-  const route = await getNadfunRoute(pub, p.tokenAddress as Address, isBuy ? netIn : p.amountIn, isBuy);
-  const amountOutMin = applySlippage(route.amountOut, p.slippageBps);
-
-  if (route.kind === "v2") {
-    if (isBuy) {
-      const data = encodeFunctionData({
-        abi: NADFUN_ROUTER_ABI,
-        functionName: "buyWithNative",
-        args: [{ token: p.tokenAddress as Address, amountOutMin, to: ownerAddr, deadline }],
-      });
-      hash = await sendViaPara(p.owner, { to: NADFUN_ROUTER, data, value: netIn });
-    } else {
-      const approveData = encodeFunctionData({
-        abi: ERC20_ABI,
-        functionName: "approve",
-        args: [NADFUN_ROUTER, p.amountIn],
-      });
-      const ah = await sendViaPara(p.owner, { to: p.tokenAddress as Address, data: approveData });
-      await pub.waitForTransactionReceipt({ hash: ah });
-      const sellData = encodeFunctionData({
-        abi: NADFUN_ROUTER_ABI,
-        functionName: "sellToNative",
-        args: [{
-          token: p.tokenAddress as Address,
-          amountIn: p.amountIn,
-          amountOutMin,
-          to: ownerAddr,
-          deadline,
-        }],
-      });
-      hash = await sendViaPara(p.owner, { to: NADFUN_ROUTER, data: sellData });
-    }
-  } else if (isBuy) {
-    const data = encodeFunctionData({
-      abi: NADFUN_LEGACY_ROUTER_ABI,
-      functionName: "buy",
-      args: [{ token: p.tokenAddress as Address, amountOutMin, to: ownerAddr, deadline }],
-    });
-    hash = await sendViaPara(p.owner, { to: route.router, data, value: netIn });
   } else {
-    const approveData = encodeFunctionData({
-      abi: ERC20_ABI,
-      functionName: "approve",
-      args: [route.router, p.amountIn],
-    });
-    const ah = await sendViaPara(p.owner, { to: p.tokenAddress as Address, data: approveData });
-    await pub.waitForTransactionReceipt({ hash: ah });
-    const sellData = encodeFunctionData({
-      abi: NADFUN_LEGACY_ROUTER_ABI,
-      functionName: "sell",
-      args: [{ token: p.tokenAddress as Address, amountIn: p.amountIn, amountOutMin, to: ownerAddr, deadline }],
-    });
-    hash = await sendViaPara(p.owner, { to: route.router, data: sellData });
-  }
+    try {
+      hash = await fireDirol({
+        pub,
+        owner: p.owner,
+        ownerAddr,
+        token,
+        amountIn: p.amountIn,
+        netIn,
+        isBuy,
+        slippageBps: p.slippageBps,
+      });
+    } catch (e) {
+      console.warn("[para-exec] Dirol route failed, falling back to direct Nad.fun route", e);
+      hash = await fireDirectNadfun({
+        pub,
+        owner: p.owner,
+        ownerAddr,
+        token,
+        amountIn: p.amountIn,
+        netIn,
+        isBuy,
+        slippageBps: p.slippageBps,
+      });
+    }
   }
 
   if (!isBuy && feeAmount > 0n) {

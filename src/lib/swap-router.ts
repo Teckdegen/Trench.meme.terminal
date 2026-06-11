@@ -39,7 +39,8 @@ export function useUnifiedQuote(params: {
   isGraduated?: boolean;
 }): UnifiedQuote {
   const { token, side, amount } = params;
-  const venue: Venue = "dirol";
+  const forceDirectNadfun = params.isGraduated === false;
+  const venue: Venue = forceDirectNadfun ? "nadfun" : "dirol";
 
   const grossIn = (() => {
     try { return BigInt(amount || "0"); } catch { return 0n; }
@@ -54,6 +55,7 @@ export function useUnifiedQuote(params: {
     tokenOut: side === "buy" ? token : COMMON_TOKENS.WMON,
     amount: quoteAmount,
     slippageBps: params.slippageBps,
+    enabled: !forceDirectNadfun,
   });
 
   const directNadfun = useQuery({
@@ -80,11 +82,11 @@ export function useUnifiedQuote(params: {
         return out.toString();
       }
     },
-    enabled: !!token && quoteAmount !== "0" && !!dirol.error,
+    enabled: !!token && quoteAmount !== "0" && (forceDirectNadfun || !!dirol.error),
     staleTime: 5_000,
   });
 
-  if (dirol.data || !dirol.error) {
+  if (!forceDirectNadfun && (dirol.data || !dirol.error)) {
     return {
       venue,
       amountIn: amount,
