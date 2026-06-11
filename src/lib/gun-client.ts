@@ -47,15 +47,17 @@ export const GUN_ENABLED = PEERS.length > 0;
 
 let _gun: any | null = null;
 
-type TimeoutWithEach = typeof globalThis.setTimeout & {
+type TimeoutWithGunHelpers = typeof globalThis.setTimeout & {
   each?: (
     list: unknown,
     cb?: (value: unknown, key: string | number) => void,
     opt?: number | { wait?: number; chunk?: number },
   ) => void;
+  turn?: ((cb?: () => void) => void) & { s?: Array<() => void> };
 };
 
-type GunTimerEach = NonNullable<TimeoutWithEach["each"]>;
+type GunTimerEach = NonNullable<TimeoutWithGunHelpers["each"]>;
+type GunTimerTurn = NonNullable<TimeoutWithGunHelpers["turn"]>;
 
 const gunTimerEach: GunTimerEach = (list, cb, opt) => {
   if (typeof cb !== "function") return;
@@ -79,19 +81,45 @@ const gunTimerEach: GunTimerEach = (list, cb, opt) => {
   run();
 };
 
+const gunTimerTurn: GunTimerTurn = Object.assign(
+  (cb?: () => void) => {
+    if (typeof cb !== "function") return;
+    gunTimerTurn.s?.push(cb);
+    if (gunTimerTurn.s?.length === 1) globalThis.setTimeout(flushGunTimerTurn, 0);
+  },
+  { s: [] as Array<() => void> },
+);
+
+function flushGunTimerTurn(): void {
+  const queue = gunTimerTurn.s ?? [];
+  const next = queue.shift();
+  if (next) next();
+  if (queue.length) globalThis.setTimeout(flushGunTimerTurn, 0);
+}
+
 function installGunTimerCompat(): void {
   if (typeof window === "undefined") return;
-  const timer = globalThis.setTimeout as TimeoutWithEach;
+  const timer = globalThis.setTimeout as TimeoutWithGunHelpers;
   if (typeof timer.each !== "function") timer.each = gunTimerEach;
+  if (typeof timer.turn !== "function") timer.turn = gunTimerTurn;
 
   // Some browser extensions/polyfills wrap setTimeout after app startup.
-  // Gun calls `setTimeout.each(...)` directly, so give wrapped timer
-  // functions the same helper through the function prototype as a fallback.
-  const fnProto = Function.prototype as Function & { each?: GunTimerEach };
+  // Gun calls `setTimeout.each/turn(...)` directly, so give wrapped timer
+  // functions the same helpers through the function prototype as a fallback.
+  const fnProto = Function.prototype as Function & {
+    each?: GunTimerEach;
+    turn?: GunTimerTurn;
+  };
   if (typeof fnProto.each !== "function") {
     Object.defineProperty(fnProto, "each", {
       configurable: true,
       value: gunTimerEach,
+    });
+  }
+  if (typeof fnProto.turn !== "function") {
+    Object.defineProperty(fnProto, "turn", {
+      configurable: true,
+      value: gunTimerTurn,
     });
   }
 }
