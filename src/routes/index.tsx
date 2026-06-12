@@ -2,7 +2,7 @@
 // is public (no login gate) and renders full-bleed OVER the app chrome via
 // a fixed container, so the sidebar/topbar/bubbles never peek through.
 
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { ArrowUpRight } from "lucide-react";
 import { APP_NAME, APP_LOGO } from "@/lib/brand";
 import { useDocumentTitle } from "@/lib/useDocumentTitle";
@@ -40,41 +40,38 @@ function Landing() {
             <img src={APP_LOGO} alt={APP_NAME} className="size-8 rounded-lg object-cover" />
             <span className="text-white font-bold text-xl tracking-tight">{APP_NAME}</span>
           </div>
-          <Link
-            to="/meme"
+          {/* Plain <a>, not router Link — entering the app does a full page
+              load so the terminal boots completely fresh. */}
+          <a
+            href="/meme"
             className="h-11 px-6 rounded-full bg-[#a855f7] hover:bg-[#9333ea] text-white text-sm font-bold inline-flex items-center gap-1.5 transition-colors"
             style={{ boxShadow: "0 8px 30px rgba(168,85,247,0.45)" }}
           >
             App <ArrowUpRight className="size-4" />
-          </Link>
+          </a>
         </header>
 
         {/* Hero */}
         <main className="flex-1 grid place-items-center px-5 py-16">
-          <div className="max-w-5xl text-center">
+          <div className="max-w-3xl text-center">
             <h1
-              className="font-black tracking-tight leading-[1.08] text-[#d6d3d1]"
-              style={{ fontSize: "clamp(40px, 7vw, 88px)" }}
+              className="font-black tracking-tight leading-[1.15] text-[#d6d3d1]"
+              style={{ fontSize: "clamp(28px, 4vw, 56px)" }}
             >
               The most <span className="text-[#a855f7]">powerful</span> way to
               trade the trenches.
             </h1>
-            <p className="mt-8 text-[#d6d3d1] text-base sm:text-xl leading-relaxed max-w-2xl mx-auto">
-              <span className="font-bold text-white">{APP_NAME}</span> puts the whole
-              Monad trench in one terminal — snipe{" "}
-              <span className="text-[#a855f7]">how</span> you want,{" "}
-              <span className="text-[#a855f7]">when</span> you want, on{" "}
-              <span className="font-bold text-white">any</span>{" "}
-              <span className="font-bold text-white">token on Monad.</span>
+            <p className="mt-5 text-[#d6d3d1] text-sm sm:text-base leading-relaxed max-w-xl mx-auto">
+              <span className="font-bold text-white">Trench the odds</span>
             </p>
-            <div className="mt-10 flex items-center justify-center gap-3">
-              <Link
-                to="/meme"
-                className="px-8 py-3.5 rounded-full bg-[#a855f7] hover:bg-[#9333ea] text-white text-base font-bold inline-flex items-center gap-2 transition-colors"
+            <div className="mt-8 flex items-center justify-center gap-3">
+              <a
+                href="/meme"
+                className="px-6 py-2.5 rounded-full bg-[#a855f7] hover:bg-[#9333ea] text-white text-sm font-bold inline-flex items-center gap-1.5 transition-colors"
                 style={{ boxShadow: "0 10px 40px rgba(168,85,247,0.5)" }}
               >
-                Start trading <ArrowUpRight className="size-5" />
-              </Link>
+                Start trading <ArrowUpRight className="size-4" />
+              </a>
             </div>
           </div>
         </main>
