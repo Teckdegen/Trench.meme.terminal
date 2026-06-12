@@ -12,6 +12,7 @@ import {
   Eye, Users, Coins, ShieldCheck, ShieldAlert, BarChart3,
   Twitter, Send, Globe,
   Flame, Sprout, TrendingUp,
+  ArrowUp, ArrowDown, ArrowUpDown,
 } from "lucide-react";
 import { useMe } from "@/lib/useMe";
 import { useBlocklist } from "@/lib/blocklist";
@@ -436,30 +437,84 @@ const exploreTabs: { key: ExploreTab; label: string; icon: any }[] = [
   { key: "mcap",    label: "Top by MC",    icon: Flame },
 ];
 
+// Column sorting — clicking a header cycles desc → asc → off (tab default).
+type SortKey = "mcap" | "liq" | "change" | "vol" | "holders" | "age";
+type SortState = { key: SortKey; dir: "desc" | "asc" } | null;
+
+function sortValue(r: DiscoveryRow, k: SortKey): number {
+  switch (k) {
+    case "mcap":    return r.marketCapUsd ?? r.liquidityUsd ?? 0;
+    case "liq":     return r.liquidityUsd ?? 0;
+    case "change":  return r.priceChange24h ?? Number.NEGATIVE_INFINITY;
+    case "vol":     return r.volumeUsd ?? 0;
+    case "holders": return r.holderCount ?? 0;
+    case "age":     return r.createdAt ? +new Date(r.createdAt) : 0;
+  }
+}
+
+function SortIcon({ sort, k }: { sort: SortState; k: SortKey }) {
+  if (sort?.key !== k) return <ArrowUpDown className="size-3 opacity-35" />;
+  return sort.dir === "desc"
+    ? <ArrowDown className="size-3 text-primary" />
+    : <ArrowUp className="size-3 text-primary" />;
+}
+
+function SortTh({
+  label, k, sort, onSort, alignLeft,
+}: { label: string; k: SortKey; sort: SortState; onSort: (k: SortKey) => void; alignLeft?: boolean }) {
+  const active = sort?.key === k;
+  return (
+    <th className={`${alignLeft ? "text-left" : "text-right"} px-3 py-2 font-medium`}>
+      <button
+        onClick={() => onSort(k)}
+        className={`inline-flex items-center gap-1 uppercase tracking-wide ${
+          active ? "text-foreground" : "hover:text-foreground"
+        }`}
+        title={`Sort by ${label}`}
+      >
+        {label} <SortIcon sort={sort} k={k} />
+      </button>
+    </th>
+  );
+}
+
 function ExploreView({
   lists, loading,
 }: { lists: { new: DiscoveryRow[]; final: DiscoveryRow[]; migrated: DiscoveryRow[] }; loading: boolean }) {
   const [tab, setTab] = useState<ExploreTab>("mcap");
   const [q, setQ] = useState("");
   const [quickBuy, setQuickBuy] = useQuickBuyAmount(`explore.${tab}`);
+  const [sort, setSort] = useState<SortState>(null);
+  const toggleSort = (key: SortKey) => {
+    setSort((s) => s?.key !== key
+      ? { key, dir: "desc" }
+      : s.dir === "desc" ? { key, dir: "asc" } : null);
+  };
 
   const sorted = useMemo(() => {
     const pool = tab === "new"
       ? [...lists.new]
       : [...lists.migrated, ...lists.final];
+    // Tab default ordering
+    let rows: DiscoveryRow[];
     if (tab === "new") {
-      return pool.sort((a, b) => +new Date(b.createdAt ?? 0) - +new Date(a.createdAt ?? 0));
-    }
-    if (tab === "gainers") {
-      return pool
+      rows = pool.sort((a, b) => +new Date(b.createdAt ?? 0) - +new Date(a.createdAt ?? 0));
+    } else if (tab === "gainers") {
+      rows = pool
         .filter((r) => r.priceChange24h != null)
         .sort((a, b) => (b.priceChange24h ?? 0) - (a.priceChange24h ?? 0));
+    } else {
+      rows = pool
+        .filter((r) => (r.marketCapUsd ?? 0) > 0)
+        .sort((a, b) => (b.marketCapUsd ?? 0) - (a.marketCapUsd ?? 0));
     }
-    // mcap
-    return pool
-      .filter((r) => (r.marketCapUsd ?? 0) > 0)
-      .sort((a, b) => (b.marketCapUsd ?? 0) - (a.marketCapUsd ?? 0));
-  }, [tab, lists]);
+    // User-picked column sort overrides the tab default
+    if (sort) {
+      const mul = sort.dir === "desc" ? -1 : 1;
+      rows = [...rows].sort((a, b) => (sortValue(a, sort.key) - sortValue(b, sort.key)) * mul);
+    }
+    return rows;
+  }, [tab, lists, sort]);
 
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
@@ -510,12 +565,12 @@ function ExploreView({
           <thead>
             <tr className="text-[10px] uppercase tracking-wide text-muted-foreground border-b border-white/5">
               <th className="text-left  px-3 py-2 font-medium">Token</th>
-              <th className="text-right px-3 py-2 font-medium">M/C</th>
-              <th className="text-right px-3 py-2 font-medium">Liq</th>
-              <th className="text-right px-3 py-2 font-medium">Price %</th>
-              <th className="text-right px-3 py-2 font-medium">Vol</th>
-              <th className="text-right px-3 py-2 font-medium">Holders</th>
-              <th className="text-right px-3 py-2 font-medium">Age</th>
+              <SortTh label="M/C"     k="mcap"    sort={sort} onSort={toggleSort} />
+              <SortTh label="Liq"     k="liq"     sort={sort} onSort={toggleSort} />
+              <SortTh label="Price %" k="change"  sort={sort} onSort={toggleSort} />
+              <SortTh label="Vol"     k="vol"     sort={sort} onSort={toggleSort} />
+              <SortTh label="Holders" k="holders" sort={sort} onSort={toggleSort} />
+              <SortTh label="Age"     k="age"     sort={sort} onSort={toggleSort} />
               <th className="text-right px-3 py-2 font-medium pr-4">Buy</th>
             </tr>
           </thead>
@@ -529,6 +584,31 @@ function ExploreView({
             {filtered.map((r) => <ExploreRow key={r.address} row={r} quickBuyMon={quickBuy} />)}
           </tbody>
         </table>
+      </div>
+
+      {/* Mobile — sort pills (desktop sorts via the table headers) */}
+      <div className="md:hidden px-3 py-2 border-b border-white/5 flex items-center gap-1.5 overflow-x-auto scrollbar-hide">
+        <span className="text-[10px] uppercase tracking-wide text-muted-foreground shrink-0">Sort</span>
+        {([
+          ["mcap", "MC"],
+          ["vol", "Vol"],
+          ["change", "Price %"],
+          ["holders", "Holders"],
+          ["age", "Age"],
+        ] as [SortKey, string][]).map(([k, label]) => {
+          const active = sort?.key === k;
+          return (
+            <button
+              key={k}
+              onClick={() => toggleSort(k)}
+              className={`h-7 px-2.5 rounded-full text-[11px] font-semibold inline-flex items-center gap-1 shrink-0 ${
+                active ? "lit-purple" : "bg-white/5 text-muted-foreground"
+              }`}
+            >
+              {label} <SortIcon sort={sort} k={k} />
+            </button>
+          );
+        })}
       </div>
 
       {/* Mobile — stacked cards, denser, more data per row */}

@@ -258,7 +258,7 @@ function Inbox() {
                         )}
                       </div>
                       <span className="text-[12px] text-muted-foreground truncate block">
-                        {t.lastBody || "No messages yet"}
+                        {t.lastBody?.startsWith("data:image") ? "📷 Image" : (t.lastBody || "No messages yet")}
                       </span>
                     </div>
                   </button>

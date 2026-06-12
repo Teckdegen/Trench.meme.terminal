@@ -1061,11 +1061,19 @@ function MessageBody({
       {(m as any).reply_to && (m as any).reply_preview && !m.deleted && (
         <div className="text-[12px] text-muted-foreground inline-flex items-center gap-1 mb-0.5">
           <CornerUpLeft className="size-3 shrink-0" />
-          <span className="truncate italic">{(m as any).reply_preview}</span>
+          <span className="truncate italic">
+            {String((m as any).reply_preview).startsWith("data:image") ? "📷 Image" : (m as any).reply_preview}
+          </span>
         </div>
       )}
       {m.deleted ? (
         <p className="text-[14px] italic text-muted-foreground">Message deleted</p>
+      ) : typeof body === "string" && body.startsWith("data:image") ? (
+        <img
+          src={body}
+          alt="Shared image"
+          className="max-w-full max-h-72 rounded-lg object-contain"
+        />
       ) : (
         <p className="text-[15px] leading-snug text-foreground/90 break-words whitespace-pre-wrap">
           {renderMarkdownLite(body)}

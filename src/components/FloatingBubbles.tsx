@@ -162,6 +162,42 @@ export function FloatingBubbles() {
   );
 }
 
+// ─────────────── Message body (text or image) ────────────────────────
+// DM/cabal images travel as data:image base64 strings in the body (same as
+// the full inbox page). Render them as actual images with a tap-to-expand
+// lightbox instead of dumping the raw base64 text into the bubble.
+const isImageBody = (s: string | undefined | null): s is string =>
+  !!s && s.startsWith("data:image");
+
+function MessageBody({ body }: { body: string }) {
+  const [zoom, setZoom] = useState(false);
+  if (!isImageBody(body)) {
+    return <span className="whitespace-pre-wrap break-words">{body}</span>;
+  }
+  return (
+    <>
+      <img
+        src={body}
+        alt="Shared image"
+        className="max-w-full max-h-56 rounded-lg object-contain cursor-zoom-in"
+        onClick={() => setZoom(true)}
+      />
+      {zoom && (
+        <div
+          className="fixed inset-0 z-[70] bg-black/90 backdrop-blur-sm grid place-items-center p-4 cursor-zoom-out"
+          onClick={(e) => { e.stopPropagation(); setZoom(false); }}
+        >
+          <img
+            src={body}
+            alt="Shared image"
+            className="max-w-full max-h-full rounded-xl object-contain"
+          />
+        </div>
+      )}
+    </>
+  );
+}
+
 function Bubble({
   icon, label, active, badge, pulse, disabled, onClick,
 }: {
@@ -215,7 +251,9 @@ function DmListPanel({
                   <Avatar addr={t.partner} />
                   <div className="flex-1 min-w-0">
                     <HandleLink address={t.partner} className="text-xs font-semibold hover:underline" at />
-                    <p className="text-[11px] text-muted-foreground truncate">{t.lastBody || "—"}</p>
+                    <p className="text-[11px] text-muted-foreground truncate">
+                      {isImageBody(t.lastBody) ? "📷 Image" : (t.lastBody || "—")}
+                    </p>
                   </div>
                   {t.unread > 0 && (
                     <span className="size-5 rounded-full bg-down text-white text-[10px] font-bold grid place-items-center">
@@ -262,7 +300,7 @@ function DmThreadPanel({
                 <div className={`max-w-[80%] px-2.5 py-1.5 rounded-xl text-sm ${
                   mine ? "lit-purple rounded-br-md" : "bg-white/5 rounded-bl-md"
                 }`}>
-                  {m.body}
+                  <MessageBody body={m.body} />
                 </div>
               </div>
             );
@@ -354,7 +392,7 @@ function CabalThreadPanel({
                       {shortAddr(m.sender_address)}
                     </p>
                   )}
-                  {m.body}
+                  <MessageBody body={m.body} />
                 </div>
               </div>
             );

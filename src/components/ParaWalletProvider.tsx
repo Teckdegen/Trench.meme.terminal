@@ -61,7 +61,7 @@ function ParaInner({ apiKey, children }: { apiKey: string; children: ReactNode }
         themeConfig: { "borderRadius": "md", "foregroundMixRatio": 0.08, "foregroundColor": "#000000", "font": "Inter" },
         authConfig: {
           oAuthMethods: ["GOOGLE", "TWITTER", "APPLE"],
-          disableEmailLogin: false,
+          disableEmailLogin: true,
           disablePhoneLogin: true,
           isGuestModeEnabled: false,
           twoFactorAuthEnabled: false,
