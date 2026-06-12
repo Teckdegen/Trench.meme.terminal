@@ -2,11 +2,49 @@
 // the exported embedded-wallet session and never opens a transaction popup.
 
 import { useState, useCallback } from "react";
-import type { Hex, Address } from "viem";
+import {
+  createPublicClient,
+  http,
+  parseAbi,
+  type Hex,
+  type Address,
+} from "viem";
+import { MONAD_MAINNET } from "@/lib/para";
 import { executeServerSwap } from "@/lib/para-session";
 import { supabase } from "@/lib/supabase";
 import { notifyTrade, notifyTradeFailed } from "@/lib/trade-fx";
 import { autoShowPnLCard } from "@/components/PnLShareCard";
+
+const publicClient = createPublicClient({
+  chain: MONAD_MAINNET,
+  transport: http(import.meta.env.VITE_MONAD_RPC_URL || "https://rpc.monad.xyz"),
+});
+
+const ERC20_BALANCE_ABI = parseAbi([
+  "function balanceOf(address owner) view returns (uint256)",
+]);
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function tokenBalance(token: Address, owner: Address) {
+  return await publicClient.readContract({
+    address: token,
+    abi: ERC20_BALANCE_ABI,
+    functionName: "balanceOf",
+    args: [owner],
+  });
+}
+
+async function waitForBuyBalanceIncrease(p: ExecParams, before: bigint | null) {
+  if (before === null) return;
+  await sleep(4_000);
+  for (let i = 0; i < 4; i += 1) {
+    const after = await tokenBalance(p.tokenAddress, p.recipient);
+    if (after > before) return;
+    await sleep(1_500);
+  }
+  throw new Error("Buy transaction confirmed, but token balance did not increase yet.");
+}
 
 export type ExecParams = {
   venue: "nadfun" | "dirol";
@@ -49,7 +87,11 @@ export function useSwapExecute() {
   const run = useCallback(async (p: ExecParams) => {
     setPending(true); setError(null); setHash(null);
     try {
+      const beforeTokenBalance = p.side === "buy"
+        ? await tokenBalance(p.tokenAddress, p.recipient).catch(() => null)
+        : null;
       const h = await executeSwap(p);
+      if (p.side === "buy") await waitForBuyBalanceIncrease(p, beforeTokenBalance);
       setHash(h);
       // Sound + toast — fire-and-forget so a UI hiccup never blocks the
       // successful trade signal.

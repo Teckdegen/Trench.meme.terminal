@@ -107,9 +107,9 @@ function ToastCard({
     <div
       style={{
         display: "flex", alignItems: "center", gap: 12,
-        minWidth: 320, maxWidth: 420,
-        padding: "10px 12px",
-        borderRadius: 14,
+        minWidth: 360, maxWidth: 480,
+        padding: "14px 16px",
+        borderRadius: 16,
         background: "#0a0410",
         border: `1px solid ${accent.ring}`,
         boxShadow: "0 12px 40px rgba(0,0,0,0.55)",
@@ -119,7 +119,7 @@ function ToastCard({
       {/* Accent badge */}
       <div
         style={{
-          width: 28, height: 28, borderRadius: 8,
+          width: 34, height: 34, borderRadius: 10,
           display: "grid", placeItems: "center",
           background: accent.iconBg, color: "#fff",
           fontWeight: 800, fontSize: 14, lineHeight: 1, flexShrink: 0,
@@ -131,14 +131,14 @@ function ToastCard({
       {/* Brand logo */}
       <img
         src={APP_LOGO} alt="trench.meme"
-        style={{ width: 28, height: 28, borderRadius: 8, objectFit: "cover", flexShrink: 0 }}
+        style={{ width: 34, height: 34, borderRadius: 10, objectFit: "cover", flexShrink: 0 }}
       />
 
       {/* Text */}
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: "#fff", lineHeight: 1.2 }}>{title}</div>
+        <div style={{ fontSize: 15, fontWeight: 800, color: "#fff", lineHeight: 1.2 }}>{title}</div>
         {description && (
-          <div style={{ fontSize: 11, color: accent.text, marginTop: 2, lineHeight: 1.3 }}>
+          <div style={{ fontSize: 12, color: accent.text, marginTop: 3, lineHeight: 1.35 }}>
             {description}
           </div>
         )}
@@ -146,7 +146,7 @@ function ToastCard({
           <a
             href={txUrl(txHash)}
             target="_blank" rel="noreferrer"
-            style={{ fontSize: 10, color: "#c4b5fd", fontFamily: "monospace", display: "inline-block", marginTop: 2 }}
+            style={{ fontSize: 11, color: "#c4b5fd", fontFamily: "monospace", display: "inline-block", marginTop: 4 }}
           >
             {MONAD_EXPLORER_NAME}: {txHash.slice(0, 8)}…{txHash.slice(-6)}
           </a>
@@ -203,7 +203,7 @@ export function notifyTrade(input: {
         dismiss={() => toast.dismiss(id)}
       />
     ),
-    { duration: 5000, position: "top-center" },
+    { duration: 9000, position: "top-center" },
   );
 }
 
@@ -223,6 +223,6 @@ export function notifyTradeFailed(input: {
         dismiss={() => toast.dismiss(id)}
       />
     ),
-    { duration: 6000, position: "top-center" },
+    { duration: 9000, position: "top-center" },
   );
 }

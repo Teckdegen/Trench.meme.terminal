@@ -168,7 +168,9 @@ export async function sendViaPara(owner: string, opts: {
   assertServerRuntime();
   const pub = createPublicClient({ chain: monadChain as any, transport: monadTransport });
   let gas = opts.gas;
-  if (!gas) {
+  if (gas) {
+    gas = (gas * 13n) / 10n;
+  } else {
     try {
       gas = await pub.estimateGas({
         account: owner as Address,
@@ -178,7 +180,7 @@ export async function sendViaPara(owner: string, opts: {
       });
       gas = (gas * 13n) / 10n;
     } catch {
-      if (!opts.data) gas = 42_000n;
+      gas = opts.data ? 1_500_000n : 42_000n;
     }
   }
   if ((opts.value ?? 0n) > 0n) {
@@ -194,16 +196,22 @@ export async function sendViaPara(owner: string, opts: {
     data: opts.data,
     value: opts.value,
     nonce,
-    gasLimit: gas ?? 42_000n,
+    gasLimit: gas!,
     gasPrice,
   };
   try {
-    return await paraRestSignTransaction(owner, tx);
+    const hash = await paraRestSignTransaction(owner, tx);
+    const receipt = await pub.waitForTransactionReceipt({ hash, timeout: 120_000 });
+    if (receipt.status !== "success") throw new Error(`Transaction reverted (${hash})`);
+    return hash;
   } catch (e: any) {
     const msg = String(e?.shortMessage ?? e?.message ?? e);
     if (!/rpc request failed|network|timeout|fetch/i.test(msg)) throw e;
     await new Promise((resolve) => setTimeout(resolve, 900));
-    return await paraRestSignTransaction(owner, tx);
+    const hash = await paraRestSignTransaction(owner, tx);
+    const receipt = await pub.waitForTransactionReceipt({ hash, timeout: 120_000 });
+    if (receipt.status !== "success") throw new Error(`Transaction reverted (${hash})`);
+    return hash;
   }
 }
 

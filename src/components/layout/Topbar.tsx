@@ -8,7 +8,7 @@ import { useIdentity, labelFor } from "@/lib/identity";
 import { useMonBalance } from "@/lib/wallet-tx";
 import { withdrawMon } from "@/lib/para-session";
 import { txUrl } from "@/lib/explorer";
-import type { Hex } from "viem";
+import { parseEther, type Hex } from "viem";
 import { MonLogo } from "@/components/MonLogo";
 import { ModalHeader, ModalShell } from "@/components/ui/modal-shell";
 
@@ -264,6 +264,7 @@ function WithdrawView({ onBack, onClose }: { onBack: () => void; onClose: () => 
   const [to, setTo] = useState("");
   const [sending, setSending] = useState(false);
   const [hash, setHash] = useState<string | null>(null);
+  const [sentAmount, setSentAmount] = useState<number | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   const gasBufferMon = 0.005;
@@ -276,15 +277,17 @@ function WithdrawView({ onBack, onClose }: { onBack: () => void; onClose: () => 
 
   const send = async () => {
     if (!valid || !me) return;
-    setSending(true); setErr(null); setHash(null);
+    setSending(true); setErr(null); setHash(null); setSentAmount(null);
     try {
-      const amountWei = BigInt(Math.floor(amt * 1e18)).toString();
+      const currentAmount = amt;
+      const amountWei = parseEther(amount.trim()).toString();
       const h = await withdrawMon({ data: {
         owner: me,
         to: to.trim() as `0x${string}`,
         amountWei,
       } });
       setHash(h as Hex);
+      setSentAmount(currentAmount);
       setAmount("");
       setTimeout(() => { refreshMon(); }, 3000);
     } catch (e: any) {
@@ -300,7 +303,7 @@ function WithdrawView({ onBack, onClose }: { onBack: () => void; onClose: () => 
           <div className="size-12 rounded-full bg-up/15 text-up grid place-items-center mx-auto">
             <Check className="size-5" />
           </div>
-          <p className="text-sm font-semibold">{amt.toFixed(4)} MON sent</p>
+          <p className="text-sm font-semibold">{(sentAmount ?? 0).toFixed(4)} MON sent</p>
           <a
             href={txUrl(hash)}
             target="_blank" rel="noreferrer"

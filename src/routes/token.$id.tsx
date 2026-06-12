@@ -134,8 +134,8 @@ function TokenPage() {
   const [limitPrice, setLimitPrice] = useState("");
   const [expiry, setExpiry] = useState<"1h" | "1d" | "7d" | "never">("1d");
 
-  // Live route + Expected output. Picks Nad.fun for un-graduated tokens and
-  // Dirol for graduated ones automatically.
+  // Live route + expected output. Execution is Dirol-first; server fallback
+  // handles Nad.fun direct only when Dirol cannot route a token.
   const rawAmount = amount && Number(amount) > 0
     ? BigInt(Math.floor(Number(amount) * 1e18)).toString()
     : "0";
@@ -495,7 +495,7 @@ function TradeButton({
     const exp = BigInt(expectedOut || "0");
     const minOut = exp - (exp * BigInt(slippageBps)) / 10000n;
     await run({
-      venue,
+      venue: "dirol",
       side,
       tokenAddress: addr as `0x${string}`,
       rawAmount: BigInt(rawAmount || "0"),
