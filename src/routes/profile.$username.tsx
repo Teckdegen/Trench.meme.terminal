@@ -56,7 +56,7 @@ export const Route = createFileRoute("/profile/$username")({
 });
 
 const ranges = ["24H", "7D", "30D", "ALL"] as const;
-const swapTabs = ["Portfolio", "All swaps", "Buys", "Sells"] as const;
+const swapTabs = ["Portfolio"] as const;
 const PNL_WINDOW: Record<(typeof ranges)[number], string> = {
   "24H": "24H",
   "7D": "7D",
@@ -110,12 +110,9 @@ export function ProfilePageView({
     : username.startsWith("@")
       ? username.slice(1)
       : username;
-  const liveSwaps = useSwapHistory(
-    isWallet(username) ? PROFILE_PROBE_TOKEN : undefined,
-    isWallet(username) ? { account_id: username, limit: 50 } : undefined,
-  );
+  const liveSwaps = { data: null } as any;
   const [range, setRange] = useState<typeof ranges[number]>("24H");
-  const [tab, setTab] = useState<typeof swapTabs[number]>("Portfolio");
+  const [tab, setTab] = useState<string>("Portfolio");
   const [following, setFollowing] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState(openEdit);
   const me = useMe();
@@ -174,9 +171,9 @@ export function ProfilePageView({
   }, [openEdit, isOwnProfile]);
   const { profile, setProfile } = useAccountProfile(resolvedAddr);
   const liveIdentity = useIdentity(resolvedAddr);
-  const { trades: indexedTrades } = useMyTrades(resolvedAddr, 50);
+  const indexedTrades: import("@/lib/supabase-hooks").TradeRow[] = [];
   const [tokenMetas, setTokenMetas] = useState<Map<string, TokenMeta>>(new Map());
-  const { snap } = useWalletPnl(resolvedAddr, PNL_WINDOW[range]);
+  const snap = null as any;
   useEffect(() => {
     const addrs = [...new Set(indexedTrades.map((t) => t.token_address.toLowerCase()))];
     if (addrs.length === 0) { setTokenMetas(new Map()); return; }
@@ -292,7 +289,7 @@ export function ProfilePageView({
   const liveTrades = useMemo(() => {
     const swaps = liveSwaps.data?.swaps;
     if (!swaps || swaps.length === 0) return null;
-    return swaps.map((s) => {
+    return swaps.map((s: any) => {
       const action: "Buy" | "Sell" = s.swap_info.event_type === "BUY" ? "Buy" : "Sell";
       const amount = Number(s.swap_info.value);
       const pnl = action === "Buy" ? amount * 0.05 : amount * -0.03;
@@ -307,7 +304,7 @@ export function ProfilePageView({
   }, [liveSwaps.data]);
 
   const trades = indexedUiTrades.length > 0 ? indexedUiTrades : (liveTrades ?? []);
-  const hasTrades = trades.length > 0;
+  const hasTrades = false;
   const livePnl = useMemo(() => {
     if (indexedTrades.length === 0) return null;
     return computePnlFromTrades(indexedTrades).byWindow.get(PNL_WINDOW[range] as PnlWindowKey) ?? null;
@@ -326,12 +323,12 @@ export function ProfilePageView({
     if (liveNetUsd != null) return liveNetUsd;
     if (livePnl) return livePnl.realized;
     if (snap) return Number(snap.realized_usd ?? 0) + Number(snap.unrealized_usd ?? 0);
-    return trades.reduce((a, t) => a + t.pnl, 0);
+    return trades.reduce((a: number, t: any) => a + t.pnl, 0);
   }, [liveNetUsd, livePnl, snap, trades]);
   const dayDelta = useMemo(() => liveNetUsd ?? livePnl?.realized ?? Number(snap?.realized_usd ?? 0), [liveNetUsd, livePnl, snap]);
   const dayUp = dayDelta >= 0;
   const topTrades = useMemo(() => trades.slice(0, 5), [trades]);
-  const filteredSwaps = trades.filter((t) => tab === "All swaps" ? true : tab === "Buys" ? t.action === "Buy" : t.action === "Sell");
+  const filteredSwaps = trades.filter((t: any) => tab === "All swaps" ? true : tab === "Buys" ? t.action === "Buy" : t.action === "Sell");
 
   // REAL PnL curve from indexed trades — cumulative net cash flow over
   // time, normalized so the chart fits its panel. With < 2 trades we show
@@ -448,12 +445,6 @@ export function ProfilePageView({
             </div>
 
             <div className="flex flex-wrap gap-x-5 gap-y-1 mt-4 text-xs text-muted-foreground">
-              {/* Only show real data — no fake seeded "avg. hold" */}
-              {(livePnl?.trades ?? snap?.trades_count ?? trades.length) > 0 && (
-                <span className="inline-flex items-center gap-1.5">
-                  <Coins className="size-3.5" /> {livePnl?.trades ?? snap?.trades_count ?? trades.length} trades
-                </span>
-              )}
               {(profile as any)?.created_at && (
                 <span className="inline-flex items-center gap-1.5">
                   <Calendar className="size-3.5" /> Joined {fmtJoined((profile as any).created_at)}
@@ -467,7 +458,7 @@ export function ProfilePageView({
         {hasTrades && (
           <div className="-mx-3 sm:-mx-4 md:-mx-6 px-3 sm:px-4 md:px-6 overflow-x-auto scrollbar-hide">
             <ul className="flex gap-3 min-w-fit">
-              {topTrades.map((tr, i) => {
+              {topTrades.map((tr: any, i: number) => {
                 const up = tr.pnl >= 0;
                 const symbol = tr.token.symbol || "TOKEN";
                 const name = tr.token.name || symbol;
@@ -511,8 +502,8 @@ export function ProfilePageView({
         )}
 
         {/* PNL + swaps */}
-        <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-4">
-          <div className="rounded-2xl bg-surface p-4 flex flex-col border border-white/5">
+        <div className="grid grid-cols-1 gap-4">
+          <div className="hidden">
             <div className="flex items-center justify-between gap-2">
               <div className="inline-flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-muted-foreground">
                 <TrendingUp className="size-3.5" /> PnL
@@ -659,7 +650,7 @@ export function ProfilePageView({
               <span className="text-right">Time</span>
             </div>
             <ul className="divide-y divide-white/5">
-              {filteredSwaps.map((tr, i) => (
+              {filteredSwaps.map((tr: any, i: number) => (
                 <li key={`${tr.token.id}-${i}`}>
                   <Link
                     to="/token/$id"
