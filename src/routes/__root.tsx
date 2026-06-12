@@ -6,6 +6,7 @@ import {
   Scripts,
   Link,
   useRouter,
+  useRouterState,
 } from "@tanstack/react-router";
 
 import appCss from "../styles.css?url";
@@ -144,17 +145,28 @@ function RootComponent() {
   useEffect(() => {
     import("@/lib/trade-fx").then((m) => m.primeAudioOnFirstClick());
   }, []);
+  // The marketing landing page ("/") is fully auth-agnostic: no login gate,
+  // no Para modal hosts, no signed-in overlays (bubbles, referral prompts,
+  // encryption consent). Whether the visitor has a session or not, the page
+  // renders identically — auth only matters once they enter /meme.
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const isLanding = pathname === "/";
+
   return (
     <QueryClientProvider client={queryClient}>
       <ParaWalletProvider>
         <AppLayout><AppErrorBoundary><Outlet /></AppErrorBoundary></AppLayout>
         <ReferralCapture />
-        <ReferralOnboarding />
-        <InstallPrompt />
-        <LoginGate />
-        <RequireAuthModalHost />
-        <EncryptionConsentHost />
-        <FloatingBubbles />
+        {!isLanding && (
+          <>
+            <ReferralOnboarding />
+            <InstallPrompt />
+            <LoginGate />
+            <RequireAuthModalHost />
+            <EncryptionConsentHost />
+            <FloatingBubbles />
+          </>
+        )}
         <PnLShareSink />
         <Toaster
           position="top-center"
