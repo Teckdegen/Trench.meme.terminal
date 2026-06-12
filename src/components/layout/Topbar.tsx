@@ -7,6 +7,7 @@ import { useMe } from "@/lib/useMe";
 import { useIdentity, labelFor } from "@/lib/identity";
 import { useMonBalance } from "@/lib/wallet-tx";
 import { withdrawMon } from "@/lib/para-session";
+import { txUrl } from "@/lib/explorer";
 import type { Hex } from "viem";
 import { MonLogo } from "@/components/MonLogo";
 import { ModalHeader, ModalShell } from "@/components/ui/modal-shell";
@@ -301,7 +302,7 @@ function WithdrawView({ onBack, onClose }: { onBack: () => void; onClose: () => 
           </div>
           <p className="text-sm font-semibold">{amt.toFixed(4)} MON sent</p>
           <a
-            href={`https://monadscan.xyz/tx/${hash}`}
+            href={txUrl(hash)}
             target="_blank" rel="noreferrer"
             className="block text-xs text-primary font-mono hover:underline truncate"
           >

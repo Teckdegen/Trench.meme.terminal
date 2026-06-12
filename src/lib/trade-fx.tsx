@@ -9,6 +9,7 @@
 
 import { toast } from "sonner";
 import { APP_LOGO } from "@/lib/brand";
+import { MONAD_EXPLORER_NAME, txUrl } from "@/lib/explorer";
 
 // ─────────────────────────── Audio ──────────────────────────────────
 let _ctx: AudioContext | null = null;
@@ -143,11 +144,11 @@ function ToastCard({
         )}
         {txHash && (
           <a
-            href={`https://monadscan.xyz/tx/${txHash}`}
+            href={txUrl(txHash)}
             target="_blank" rel="noreferrer"
             style={{ fontSize: 10, color: "#c4b5fd", fontFamily: "monospace", display: "inline-block", marginTop: 2 }}
           >
-            {txHash.slice(0, 8)}…{txHash.slice(-6)}
+            {MONAD_EXPLORER_NAME}: {txHash.slice(0, 8)}…{txHash.slice(-6)}
           </a>
         )}
       </div>

@@ -19,6 +19,7 @@ import {
 import { Sparkline } from "@/components/Charts";
 import { MobileTabs } from "@/components/SimpleLayout";
 import { useDocumentTitle } from "@/lib/useDocumentTitle";
+import { txUrl } from "@/lib/explorer";
 export const Route = createFileRoute("/wallet")({ component: PortfolioPage });
 
 function PortfolioPage() {
@@ -251,7 +252,7 @@ function WalletHistoryTab({
                   {fmtUsd(Number(t.value_usd ?? 0))}
                 </p>
                 <a
-                  href={`https://monadscan.xyz/tx/${t.tx_hash}`}
+                  href={txUrl(t.tx_hash)}
                   target="_blank"
                   rel="noreferrer"
                   className="text-[10px] text-primary hover:underline"

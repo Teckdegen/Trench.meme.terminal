@@ -59,6 +59,7 @@ import {
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useDocumentTitle } from "@/lib/useDocumentTitle";
 import { ModalShell } from "@/components/ui/modal-shell";
+import { txUrl } from "@/lib/explorer";
 
 export const Route = createFileRoute("/cabals")({ component: CabalsPage });
 
@@ -911,7 +912,7 @@ function DiscordChat({ cabal, me }: { cabal: CabalMeta; me: string | undefined }
                 <HandleLink address={m.sender_address} className="text-xs text-muted-foreground hover:underline" at />
                 <span className="flex-1 font-medium">{m.body}</span>
                 {m.meta?.tx_hash && (
-                  <a href={`https://monadscan.xyz/tx/${m.meta.tx_hash}`} target="_blank" rel="noreferrer"
+                  <a href={txUrl(m.meta.tx_hash)} target="_blank" rel="noreferrer"
                      className="text-[11px] text-primary hover:underline">tx ↗</a>
                 )}
               </div>

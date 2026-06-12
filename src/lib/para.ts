@@ -1,4 +1,5 @@
 import { http, type Chain, type WalletClient } from "viem";
+import { MONAD_EXPLORER_NAME, MONAD_EXPLORER_URL } from "@/lib/explorer";
 
 export const MONAD_MAINNET: Chain = {
   id: 143,
@@ -8,7 +9,7 @@ export const MONAD_MAINNET: Chain = {
     default: { http: [import.meta.env.VITE_MONAD_RPC_URL || "https://rpc.monad.xyz"] },
   },
   blockExplorers: {
-    default: { name: "MonadScan", url: "https://monadscan.xyz" },
+    default: { name: MONAD_EXPLORER_NAME, url: MONAD_EXPLORER_URL },
   },
 } as const;
 

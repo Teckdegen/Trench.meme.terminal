@@ -28,6 +28,7 @@ import { useGunChat, gunSend, GUN_ENABLED } from "@/lib/gun";
 import { SUPABASE_ENABLED } from "@/lib/supabase-hooks";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useTradePrefs } from "@/lib/trade-prefs";
+import { MONAD_EXPLORER_NAME, txUrl } from "@/lib/explorer";
 // Route id must be a Monad contract address. Live data via Nad.fun + DexScreener fallback.
 const isContract = (s: string) => /^0x[a-fA-F0-9]{40}$/.test(s);
 
@@ -519,12 +520,12 @@ function TradeButton({
       </button>
       {hash && (
         <a
-          href={`https://monadscan.xyz/tx/${hash}`}
+          href={txUrl(hash)}
           target="_blank"
           rel="noreferrer"
           className="block mt-2 text-[11px] text-primary text-center hover:underline"
         >
-          Tx submitted · view on explorer
+          Tx submitted · view on {MONAD_EXPLORER_NAME}
         </a>
       )}
       {okMsg && <p className="text-[11px] text-up text-center mt-2">{okMsg}</p>}
@@ -591,7 +592,7 @@ function TradesTab({ token, enabled, priceUsd: _priceUsd }: { token: string; ena
                 <span className="truncate">{fmtAmount(s.token_amount)} tokens</span>
                 <span className="shrink-0 font-mono">${Number(s.price_usd ?? 0).toPrecision(3)}</span>
                 <a
-                  href={`https://monadscan.xyz/tx/${s.tx_hash}`}
+                  href={txUrl(s.tx_hash)}
                   target="_blank"
                   rel="noreferrer"
                   className="shrink-0 font-mono text-primary hover:underline"
@@ -641,7 +642,7 @@ function TradesTab({ token, enabled, priceUsd: _priceUsd }: { token: string; ena
                   </td>
                   <td className="px-3 py-2.5 text-right">
                     <a
-                      href={`https://monadscan.xyz/tx/${s.tx_hash}`}
+                      href={txUrl(s.tx_hash)}
                       target="_blank"
                       rel="noreferrer"
                       className="text-[11px] font-mono text-primary hover:underline"
