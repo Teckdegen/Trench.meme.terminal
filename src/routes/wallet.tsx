@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createChart, ColorType, type IChartApi, type ISeriesApi, type Time } from "lightweight-charts";
 import { useMe } from "@/lib/useMe";
 import { useDirectTokenBalance, useMonBalance, useTokenHoldings } from "@/lib/wallet-tx";
 import { MonLogo } from "@/components/MonLogo";
@@ -16,7 +17,6 @@ import { useIdentity, labelFor } from "@/lib/identity";
 import {
   ArrowUpRight, ArrowDownLeft, TrendingUp, Activity, Percent, Wallet as WalletIcon, Target, BarChart3,
 } from "lucide-react";
-import { Sparkline } from "@/components/Charts";
 import { MobileTabs } from "@/components/SimpleLayout";
 import { useDocumentTitle } from "@/lib/useDocumentTitle";
 import { txUrl } from "@/lib/explorer";
@@ -48,14 +48,19 @@ function PortfolioPage() {
     return ((r + u) / vol) * 100;
   }, [livePnl, snap]);
 
+  // Equity curve — cumulative net USD flow (sells in, buys out) per trade,
+  // with real timestamps so the chart's time axis means something.
   const equityCurve = useMemo(() => {
-    if (trades.length < 2) return Array.from({ length: 24 }, (_, i) => 20 + i * 0.5);
+    if (trades.length === 0) return [] as { time: number; value: number }[];
     let cum = 0;
-    const pts: number[] = [];
+    const pts: { time: number; value: number }[] = [];
     for (const t of [...trades].reverse()) {
       const v = Number(t.value_usd ?? 0);
       cum += t.side === "SELL" ? v : -v;
-      pts.push(Math.max(0, 20 + cum / 50));
+      let ts = Math.floor(+new Date(t.created_at_chain ?? Date.now()) / 1000);
+      const last = pts[pts.length - 1];
+      if (last && ts <= last.time) ts = last.time + 1; // strictly ascending
+      pts.push({ time: ts, value: cum });
     }
     return pts;
   }, [trades]);
@@ -122,33 +127,110 @@ function PortfolioPage() {
         />
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-[1fr_340px] gap-4">
-        <div className="space-y-4">
-          <WalletPostsTab
-            me={me}
-            posts={[]}
-            loading={false}
-            profile={profile}
-            hidden
-          />
-          <WalletHistoryTab transactions={walletTxs} loading={walletTxLoading || tradesLoading} hidden={mTab !== "transactions"} />
-        </div>
-
-        <aside className={`space-y-4 ${mTab === "transactions" || mTab === "portfolio" ? "" : "hidden"} md:block`}>
-          <div className="rounded-3xl ios-glass-card p-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold">Performance</h3>
-              <span className="text-xs text-muted-foreground">All time</span>
-            </div>
-            <Sparkline data={equityCurve} color="#a855f7" height={70} width={300} />
-            <p className="text-xs text-muted-foreground mt-1">
+      {/* Performance — full-width equity curve */}
+      <div className={`rounded-3xl ios-glass-card p-4 ${mTab === "portfolio" ? "" : "hidden"} md:block`}>
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-semibold">Performance</h3>
+            <p className="text-xs text-muted-foreground mt-0.5">
               {trades.length === 0
-                ? "No indexed trades yet - fire a swap to see your curve."
-                : `${trades.length} trades indexed`}
+                ? "No indexed trades yet — fire a swap to see your curve."
+                : `Net flow across ${trades.length} trades`}
             </p>
           </div>
-        </aside>
+          <div className="text-right">
+            <span className="text-xs text-muted-foreground">All time</span>
+            {equityCurve.length > 0 && (
+              <p className={`text-lg font-bold tabular-nums ${
+                equityCurve[equityCurve.length - 1].value >= 0 ? "text-up" : "text-down"
+              }`}>
+                {fmtUsd(equityCurve[equityCurve.length - 1].value)}
+              </p>
+            )}
+          </div>
+        </div>
+        <PerformanceChart points={equityCurve} />
       </div>
+
+      <div className="space-y-4">
+        <WalletPostsTab
+          me={me}
+          posts={[]}
+          loading={false}
+          profile={profile}
+          hidden
+        />
+        <WalletHistoryTab transactions={walletTxs} loading={walletTxLoading || tradesLoading} hidden={mTab !== "transactions"} />
+      </div>
+    </div>
+  );
+}
+
+// Full-width equity-curve area chart (lightweight-charts, same library as
+// the token candle charts). Purple area over transparent bg, auto-resizes
+// to the card width, fits all points into view on every data update.
+function PerformanceChart({ points }: { points: { time: number; value: number }[] }) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const chartRef = useRef<IChartApi | null>(null);
+  const seriesRef = useRef<ISeriesApi<"Area"> | null>(null);
+
+  useEffect(() => {
+    if (!ref.current) return;
+    const chart = createChart(ref.current, {
+      height: 260,
+      layout: {
+        background: { type: ColorType.Solid, color: "transparent" },
+        textColor: "#9ca3af",
+        fontSize: 11,
+      },
+      grid: {
+        vertLines: { color: "rgba(255,255,255,0.04)" },
+        horzLines: { color: "rgba(255,255,255,0.04)" },
+      },
+      rightPriceScale: { borderColor: "rgba(255,255,255,0.06)" },
+      timeScale: { borderColor: "rgba(255,255,255,0.06)", timeVisible: true, secondsVisible: false },
+      handleScroll: false,
+      handleScale: false,
+    });
+    const area = chart.addAreaSeries({
+      lineColor: "#a855f7",
+      lineWidth: 2,
+      topColor: "rgba(168,85,247,0.35)",
+      bottomColor: "rgba(168,85,247,0.02)",
+      priceLineVisible: false,
+      priceFormat: { type: "price", precision: 2, minMove: 0.01 },
+    });
+    chartRef.current = chart;
+    seriesRef.current = area;
+
+    const ro = new ResizeObserver((entries) => {
+      for (const e of entries) {
+        chart.applyOptions({ width: e.contentRect.width });
+        chart.timeScale().fitContent();
+      }
+    });
+    ro.observe(ref.current);
+    return () => { ro.disconnect(); chart.remove(); chartRef.current = null; seriesRef.current = null; };
+  }, []);
+
+  useEffect(() => {
+    if (!seriesRef.current || !chartRef.current) return;
+    seriesRef.current.setData(points.map((p) => ({ time: p.time as Time, value: p.value })));
+    chartRef.current.timeScale().fitContent();
+  }, [points]);
+
+  // Always mount the container — the chart is created once on mount, so an
+  // early return here would leave it uninitialized when trades arrive later.
+  return (
+    <div className="relative mt-2 min-h-[260px]">
+      <div ref={ref} className={`w-full ${points.length < 2 ? "invisible" : ""}`} />
+      {points.length < 2 && (
+        <div className="absolute inset-0 grid place-items-center">
+          <p className="text-xs text-muted-foreground">
+            Your equity curve appears here after a couple of trades.
+          </p>
+        </div>
+      )}
     </div>
   );
 }
