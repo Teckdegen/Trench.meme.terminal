@@ -1,6 +1,6 @@
 import "@getpara/react-sdk-lite/styles.css";
 
-import { Suspense, createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { Suspense, createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { setMe, useMe } from "@/lib/useMe";
 import { getParaConfig } from "@/lib/para-config";
 import { APP_NAME } from "@/lib/brand";
@@ -67,7 +67,9 @@ function ParaInner({ apiKey, children }: { apiKey: string; children: ReactNode }
           twoFactorAuthEnabled: false,
         },
         modalConfig: {
-          disableAddFundsPrompt: false,
+          // true — Para must never pop its wallet/add-funds screen on its
+          // own. The modal only opens when WE call openModal().
+          disableAddFundsPrompt: true,
           authLayout: ["AUTH:FULL"],
           hideWallets: false,
         },
@@ -96,8 +98,10 @@ function ParaSync({ hooks }: { hooks: any }) {
   const me = useMe();
   const useAccount = hooks.useAccount;
   const useClient = hooks.useClient;
+  const useModal = hooks.useModal;
   const account = useAccount?.() ?? { isLoading: true, isConnected: false };
   const client = useClient?.();
+  const modal = useModal?.();
   const wallet = embeddedWalletFromAccount(account);
   const address: string | undefined =
     wallet?.address ??
@@ -112,8 +116,26 @@ function ParaSync({ hooks }: { hooks: any }) {
     }
     const addr = account?.isConnected ? address?.toLowerCase() : undefined;
     if (addr && !me) setMe(addr);
-    else if (!account?.isLoading && !account?.isConnected && me) setMe(undefined);
+    // Only clear `me` when Para EXPLICITLY reports disconnected. Transient
+    // query states (refetch glitches → isConnected undefined) must not log
+    // the user out — that flicker remounts LoginGate, whose auto-opener
+    // then pops the Para modal even though the user is signed in.
+    else if (!account?.isLoading && account?.isConnected === false && me) setMe(undefined);
   }, [account?.isConnected, account?.isLoading, address, me]);
+
+  // The Para modal must never linger once the user is authenticated — if it
+  // is open when the account flips to connected (post-login, or a stray
+  // auto-open during an auth-state flicker), close it. The wallet screen in
+  // the modal is not part of our UX; funds live in our own Funds modal.
+  const wasConnected = useRef(false);
+  useEffect(() => {
+    if (account?.isConnected && !wasConnected.current) {
+      wasConnected.current = true;
+      if (modal?.isOpen) modal.closeModal?.();
+    } else if (account?.isConnected === false) {
+      wasConnected.current = false;
+    }
+  }, [account?.isConnected, modal?.isOpen]);
 
   useEffect(() => {
     if (client) (window as any).__trenchParaClient = client;

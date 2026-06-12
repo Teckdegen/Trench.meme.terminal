@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { fmtPct } from "@/lib/fmt";
 import {
   useDiscoveryFeed,
+  useLatestTradeFeed,
   formatDiscoveryAge,
   type DiscoveryRow,
   type PipelineColumn,
@@ -13,6 +14,7 @@ import {
   Twitter, Send, Globe,
   Flame, Sprout, TrendingUp,
   ArrowUp, ArrowDown, ArrowUpDown,
+  SlidersHorizontal, X,
 } from "lucide-react";
 import { useMe } from "@/lib/useMe";
 import { useBlocklist } from "@/lib/blocklist";
@@ -68,6 +70,7 @@ type ColumnKey = PipelineColumn;
 
 const columns: { key: ColumnKey; label: string; subtitle: string }[] = [
   { key: "new", label: "New Pairs", subtitle: "Launched in the last 3 days" },
+  { key: "latest", label: "Latest Trades", subtitle: "Trading right now — live, 5s refresh" },
   { key: "migrated", label: "Migrated", subtitle: "Trending on Monad" },
 ];
 
@@ -110,6 +113,9 @@ export function PairsTerminal() {
   };
   const [active, setActive] = useState<ColumnKey>("new");
   const { columns: lists, loading, refreshing, hasData } = useDiscoveryFeed();
+  const latest = useLatestTradeFeed();
+  const rowsFor = (key: ColumnKey): DiscoveryRow[] =>
+    key === "latest" ? latest.rows : lists[key as "new" | "final" | "migrated"];
 
   return (
     <section className="-mx-3 sm:-mx-4 md:-mx-6">
@@ -135,13 +141,13 @@ export function PairsTerminal() {
 
       {view === "trench" ? (
         <>
-          <div className="md:grid md:grid-cols-2 md:gap-px md:bg-white/5">
+          <div className="md:grid md:grid-cols-3 md:gap-px md:bg-white/5">
             {columns.map((c) => (
               <Column
                 key={c.key}
                 column={c}
-                rows={lists[c.key]}
-                loading={loading}
+                rows={rowsFor(c.key)}
+                loading={c.key === "latest" ? latest.loading : loading}
                 visibleOnMobile={active === c.key}
               />
             ))}
@@ -176,13 +182,15 @@ function Column({
 }: { column: typeof columns[number]; rows: DiscoveryRow[]; loading: boolean; visibleOnMobile: boolean }) {
   const [q, setQ] = useState("");
   const [quickBuy, setQuickBuy] = useQuickBuyAmount(column.key);
+  const [filters, setFilters] = useState<RangeFilters>(EMPTY_FILTERS);
   const filtered = useMemo(() => {
+    const ranged = applyRangeFilters(rows, filters);
     const s = q.trim().toLowerCase();
-    if (!s) return rows;
-    return rows.filter(
+    if (!s) return ranged;
+    return ranged.filter(
       (r) => r.symbol.toLowerCase().includes(s) || r.name.toLowerCase().includes(s) || r.address.includes(s),
     );
-  }, [rows, q]);
+  }, [rows, q, filters]);
 
   return (
     <div className={`${visibleOnMobile ? "" : "hidden"} md:block bg-background`}>
@@ -193,6 +201,7 @@ function Column({
         </div>
         <div className="ml-auto flex items-center gap-3">
           <QuickBuyAmountInput value={quickBuy} onChange={setQuickBuy} />
+          <FiltersControl filters={filters} setFilters={setFilters} />
           <div className="flex items-center gap-1.5 h-7 px-2.5 rounded-full bg-white/5 w-[140px]">
             <Search className="size-3 text-muted-foreground shrink-0" />
             <input
@@ -407,6 +416,16 @@ function PairCard({ row, mode, quickBuyMon }: { row: DiscoveryRow; mode: ColumnK
               <div className="flex-1 min-w-0 text-[11px] font-bold text-up">
                 {row.isGraduated ? "Graduated" : fmtPct(pct)}
               </div>
+            ) : mode === "latest" ? (
+              <div className="flex-1 min-w-0 text-[10px] font-semibold text-up inline-flex items-center gap-1.5">
+                <span className="size-1.5 rounded-full bg-up animate-pulse" />
+                Trading now
+                {row.priceChange24h != null && (
+                  <span className={row.priceChange24h >= 0 ? "text-up" : "text-down"}>
+                    {`${row.priceChange24h >= 0 ? "+" : ""}${row.priceChange24h.toFixed(1)}%`}
+                  </span>
+                )}
+              </div>
             ) : (
               <div className="flex-1 min-w-0 text-[10px] text-muted-foreground">New launch</div>
             )}
@@ -438,18 +457,162 @@ const exploreTabs: { key: ExploreTab; label: string; icon: any }[] = [
 ];
 
 // Column sorting — clicking a header cycles desc → asc → off (tab default).
-type SortKey = "mcap" | "liq" | "change" | "vol" | "holders" | "age";
+type SortKey = "mcap" | "liq" | "change" | "vol" | "age";
 type SortState = { key: SortKey; dir: "desc" | "asc" } | null;
 
 function sortValue(r: DiscoveryRow, k: SortKey): number {
   switch (k) {
-    case "mcap":    return r.marketCapUsd ?? r.liquidityUsd ?? 0;
-    case "liq":     return r.liquidityUsd ?? 0;
-    case "change":  return r.priceChange24h ?? Number.NEGATIVE_INFINITY;
-    case "vol":     return r.volumeUsd ?? 0;
-    case "holders": return r.holderCount ?? 0;
-    case "age":     return r.createdAt ? +new Date(r.createdAt) : 0;
+    case "mcap":   return r.marketCapUsd ?? r.liquidityUsd ?? 0;
+    case "liq":    return r.liquidityUsd ?? 0;
+    case "change": return r.priceChange24h ?? Number.NEGATIVE_INFINITY;
+    case "vol":    return r.volumeUsd ?? 0;
+    case "age":    return r.createdAt ? +new Date(r.createdAt) : 0;
   }
+}
+
+// ─────────────────── Range filters ───────────────────────────────────
+// Min/max filters over MC, price, volume and liquidity. Values accept
+// plain numbers plus k/m/b suffixes ("250k", "1.5m"). Empty = no bound.
+type RangeFilters = {
+  mcMin: string; mcMax: string;
+  priceMin: string; priceMax: string;
+  volMin: string; volMax: string;
+  liqMin: string; liqMax: string;
+};
+const EMPTY_FILTERS: RangeFilters = {
+  mcMin: "", mcMax: "", priceMin: "", priceMax: "",
+  volMin: "", volMax: "", liqMin: "", liqMax: "",
+};
+
+function parseFilterNum(s: string): number | null {
+  const t = s.trim().toLowerCase().replace(/[$,\s]/g, "");
+  if (!t) return null;
+  const m = /^([0-9]*\.?[0-9]+)([kmb])?$/.exec(t);
+  if (!m) return null;
+  let n = parseFloat(m[1]);
+  if (m[2] === "k") n *= 1e3;
+  else if (m[2] === "m") n *= 1e6;
+  else if (m[2] === "b") n *= 1e9;
+  return Number.isFinite(n) ? n : null;
+}
+
+function activeFilterCount(f: RangeFilters): number {
+  return (Object.values(f) as string[]).filter((v) => parseFilterNum(v) != null).length;
+}
+
+function applyRangeFilters(rows: DiscoveryRow[], f: RangeFilters): DiscoveryRow[] {
+  const b = {
+    mcMin: parseFilterNum(f.mcMin),   mcMax: parseFilterNum(f.mcMax),
+    prMin: parseFilterNum(f.priceMin), prMax: parseFilterNum(f.priceMax),
+    voMin: parseFilterNum(f.volMin),  voMax: parseFilterNum(f.volMax),
+    liMin: parseFilterNum(f.liqMin),  liMax: parseFilterNum(f.liqMax),
+  };
+  if (Object.values(b).every((v) => v == null)) return rows;
+  return rows.filter((r) => {
+    const mc = r.marketCapUsd ?? r.liquidityUsd ?? 0;
+    const pr = r.priceUsd ?? 0;
+    const vo = r.volumeUsd ?? 0;
+    const li = r.liquidityUsd ?? 0;
+    if (b.mcMin != null && mc < b.mcMin) return false;
+    if (b.mcMax != null && mc > b.mcMax) return false;
+    if (b.prMin != null && pr < b.prMin) return false;
+    if (b.prMax != null && pr > b.prMax) return false;
+    if (b.voMin != null && vo < b.voMin) return false;
+    if (b.voMax != null && vo > b.voMax) return false;
+    if (b.liMin != null && li < b.liMin) return false;
+    if (b.liMax != null && li > b.liMax) return false;
+    return true;
+  });
+}
+
+function FilterRangeRow({
+  label, minKey, maxKey, filters, setFilters,
+}: {
+  label: string; minKey: keyof RangeFilters; maxKey: keyof RangeFilters;
+  filters: RangeFilters; setFilters: (f: RangeFilters) => void;
+}) {
+  const inputCls =
+    "w-full h-8 rounded-lg bg-white/5 px-2 text-[12px] tabular-nums focus:outline-none focus:ring-1 focus:ring-primary/40 placeholder:text-muted-foreground/60";
+  return (
+    <div>
+      <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">{label}</p>
+      <div className="flex items-center gap-1.5">
+        <input
+          value={filters[minKey]}
+          onChange={(e) => setFilters({ ...filters, [minKey]: e.target.value })}
+          placeholder="Min"
+          className={inputCls}
+        />
+        <span className="text-muted-foreground text-[11px]">–</span>
+        <input
+          value={filters[maxKey]}
+          onChange={(e) => setFilters({ ...filters, [maxKey]: e.target.value })}
+          placeholder="Max"
+          className={inputCls}
+        />
+      </div>
+    </div>
+  );
+}
+
+function FiltersControl({
+  filters, setFilters,
+}: { filters: RangeFilters; setFilters: (f: RangeFilters) => void }) {
+  const [open, setOpen] = useState(false);
+  const n = activeFilterCount(filters);
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className={`h-7 px-2.5 rounded-full text-[11px] font-semibold inline-flex items-center gap-1.5 ${
+          n > 0 || open ? "lit-purple" : "bg-white/5 text-muted-foreground hover:text-foreground"
+        }`}
+      >
+        <SlidersHorizontal className="size-3" />
+        Filters
+        {n > 0 && (
+          <span className="min-w-4 h-4 px-1 rounded-full bg-white/25 text-[9px] font-bold grid place-items-center">
+            {n}
+          </span>
+        )}
+      </button>
+      {open && (
+        <div
+          className="absolute right-0 top-9 z-50 w-[270px] rounded-2xl bg-background border border-white/10 p-3 space-y-2.5"
+          style={{ boxShadow: "0 20px 60px rgba(0,0,0,0.7)" }}
+        >
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-bold">Filters</p>
+            <button onClick={() => setOpen(false)} className="size-6 grid place-items-center rounded-full bg-white/5">
+              <X className="size-3" />
+            </button>
+          </div>
+          <FilterRangeRow label="Market cap ($)" minKey="mcMin" maxKey="mcMax" filters={filters} setFilters={setFilters} />
+          <FilterRangeRow label="Price ($)" minKey="priceMin" maxKey="priceMax" filters={filters} setFilters={setFilters} />
+          <FilterRangeRow label="Volume ($)" minKey="volMin" maxKey="volMax" filters={filters} setFilters={setFilters} />
+          <FilterRangeRow label="Liquidity ($)" minKey="liqMin" maxKey="liqMax" filters={filters} setFilters={setFilters} />
+          <p className="text-[10px] text-muted-foreground">
+            Shorthand works: 250k, 1.5m, 2b
+          </p>
+          <div className="flex gap-2 pt-0.5">
+            <button
+              onClick={() => setFilters(EMPTY_FILTERS)}
+              disabled={n === 0}
+              className="flex-1 h-8 rounded-lg bg-white/5 text-[11px] font-semibold disabled:opacity-40"
+            >
+              Clear all
+            </button>
+            <button
+              onClick={() => setOpen(false)}
+              className="flex-1 h-8 rounded-lg lit-purple text-[11px] font-semibold"
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function SortIcon({ sort, k }: { sort: SortState; k: SortKey }) {
@@ -485,6 +648,7 @@ function ExploreView({
   const [q, setQ] = useState("");
   const [quickBuy, setQuickBuy] = useQuickBuyAmount(`explore.${tab}`);
   const [sort, setSort] = useState<SortState>(null);
+  const [filters, setFilters] = useState<RangeFilters>(EMPTY_FILTERS);
   const toggleSort = (key: SortKey) => {
     setSort((s) => s?.key !== key
       ? { key, dir: "desc" }
@@ -517,12 +681,13 @@ function ExploreView({
   }, [tab, lists, sort]);
 
   const filtered = useMemo(() => {
+    const ranged = applyRangeFilters(sorted, filters);
     const s = q.trim().toLowerCase();
-    if (!s) return sorted;
-    return sorted.filter(
+    if (!s) return ranged;
+    return ranged.filter(
       (r) => r.symbol.toLowerCase().includes(s) || r.name.toLowerCase().includes(s) || r.address.includes(s),
     );
-  }, [sorted, q]);
+  }, [sorted, q, filters]);
 
   return (
     <div className="bg-background">
@@ -547,6 +712,7 @@ function ExploreView({
         </div>
         <div className="ml-auto flex items-center gap-3">
           <QuickBuyAmountInput value={quickBuy} onChange={setQuickBuy} />
+          <FiltersControl filters={filters} setFilters={setFilters} />
           <div className="flex items-center gap-1.5 h-7 px-2.5 rounded-full bg-white/5 w-[160px]">
             <Search className="size-3 text-muted-foreground shrink-0" />
             <input
@@ -565,12 +731,11 @@ function ExploreView({
           <thead>
             <tr className="text-[10px] uppercase tracking-wide text-muted-foreground border-b border-white/5">
               <th className="text-left  px-3 py-2 font-medium">Token</th>
-              <SortTh label="M/C"     k="mcap"    sort={sort} onSort={toggleSort} />
-              <SortTh label="Liq"     k="liq"     sort={sort} onSort={toggleSort} />
-              <SortTh label="Price %" k="change"  sort={sort} onSort={toggleSort} />
-              <SortTh label="Vol"     k="vol"     sort={sort} onSort={toggleSort} />
-              <SortTh label="Holders" k="holders" sort={sort} onSort={toggleSort} />
-              <SortTh label="Age"     k="age"     sort={sort} onSort={toggleSort} />
+              <SortTh label="M/C"     k="mcap"   sort={sort} onSort={toggleSort} />
+              <SortTh label="Liq"     k="liq"    sort={sort} onSort={toggleSort} />
+              <SortTh label="Price %" k="change" sort={sort} onSort={toggleSort} />
+              <SortTh label="Vol"     k="vol"    sort={sort} onSort={toggleSort} />
+              <SortTh label="Age"     k="age"    sort={sort} onSort={toggleSort} />
               <th className="text-right px-3 py-2 font-medium pr-4">Buy</th>
             </tr>
           </thead>
@@ -579,7 +744,7 @@ function ExploreView({
               Array.from({ length: 8 }).map((_, i) => <ExploreRowSkeleton key={`skel-${i}`} />)
             )}
             {!loading && filtered.length === 0 && (
-              <tr><td colSpan={8} className="px-3 py-12 text-center text-muted-foreground text-xs">No tokens match.</td></tr>
+              <tr><td colSpan={7} className="px-3 py-12 text-center text-muted-foreground text-xs">No tokens match.</td></tr>
             )}
             {filtered.map((r) => <ExploreRow key={r.address} row={r} quickBuyMon={quickBuy} />)}
           </tbody>
@@ -593,7 +758,6 @@ function ExploreView({
           ["mcap", "MC"],
           ["vol", "Vol"],
           ["change", "Price %"],
-          ["holders", "Holders"],
           ["age", "Age"],
         ] as [SortKey, string][]).map(([k, label]) => {
           const active = sort?.key === k;
@@ -736,7 +900,6 @@ function ExploreRowSkeleton() {
       <td className="px-3 py-2.5 text-right"><div className="ml-auto h-3 w-12 rounded bg-white/10" /></td>
       <td className="px-3 py-2.5 text-right"><div className="ml-auto h-3 w-14 rounded bg-white/10" /></td>
       <td className="px-3 py-2.5 text-right"><div className="ml-auto h-3 w-10 rounded bg-white/10" /></td>
-      <td className="px-3 py-2.5 text-right"><div className="ml-auto h-3 w-10 rounded bg-white/10" /></td>
       <td className="px-3 py-2.5 text-right pr-4"><div className="ml-auto h-7 w-16 rounded-full bg-white/10" /></td>
     </tr>
   );
@@ -800,7 +963,6 @@ function ExploreRow({ row, quickBuyMon }: { row: DiscoveryRow; quickBuyMon: numb
         {change == null ? "—" : `${change >= 0 ? "+" : ""}${change.toFixed(2)}%`}
       </td>
       <td className="px-3 py-2.5 text-right tabular-nums">{fmtVol(row.volumeUsd)}</td>
-      <td className="px-3 py-2.5 text-right tabular-nums">{row.holderCount ?? "—"}</td>
       <td className="px-3 py-2.5 text-right text-muted-foreground">{formatDiscoveryAge(row.createdAt)}</td>
       <td className="px-3 py-2.5 text-right pr-4">
         <button

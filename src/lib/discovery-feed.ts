@@ -9,7 +9,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-export type PipelineColumn = "new" | "final" | "migrated";
+export type PipelineColumn = "new" | "final" | "migrated" | "latest";
 
 export type DiscoveryRow = {
   address: string;
@@ -72,6 +72,42 @@ function timeAgo(iso: string | null): string {
 }
 export function formatDiscoveryAge(iso: string | null) {
   return timeAgo(iso);
+}
+
+// ─────────────────── Latest trades column (5s poll) ─────────────────────
+// Tokens ordered by most recent trade, via Nad.fun /order/latest_trade.
+// Polls fast (5s) so the column feels live; the server fn caches upstream
+// calls so this stays within Nad.fun rate limits.
+const LATEST_REFRESH_MS = 5_000;
+let latestCache: { rows: DiscoveryRow[]; at: number } | null = null;
+
+export function useLatestTradeFeed() {
+  const [rows, setRows] = useState<DiscoveryRow[]>(latestCache?.rows ?? []);
+  const [loading, setLoading] = useState(!latestCache);
+
+  useEffect(() => {
+    let cancel = false;
+    const refresh = async () => {
+      try {
+        const { fetchLatestTradeFeed } = await import("./discovery-api");
+        const res = await fetchLatestTradeFeed({ data: {} });
+        if (cancel) return;
+        if (res.rows.length > 0 || !latestCache) {
+          latestCache = { rows: res.rows, at: Date.now() };
+          setRows(res.rows);
+        }
+      } catch (e) {
+        console.warn("[latest-trades]", e);
+      } finally {
+        if (!cancel) setLoading(false);
+      }
+    };
+    refresh();
+    const poll = setInterval(refresh, LATEST_REFRESH_MS);
+    return () => { cancel = true; clearInterval(poll); };
+  }, []);
+
+  return { rows, loading };
 }
 
 export function useDiscoveryFeed() {

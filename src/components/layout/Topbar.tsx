@@ -1,4 +1,4 @@
-import { Search, Plus, Menu, Star, Copy, ChevronDown, Loader2, BadgeCheck, Check } from "lucide-react";
+import { Search, Plus, Menu, Star, Copy, ChevronDown, Loader2, BadgeCheck, Check, KeyRound } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { APP_NAME, APP_LOGO } from "@/lib/brand";
@@ -11,6 +11,8 @@ import { txUrl } from "@/lib/explorer";
 import { parseEther, type Hex } from "viem";
 import { MonLogo } from "@/components/MonLogo";
 import { ModalHeader, ModalShell } from "@/components/ui/modal-shell";
+import { useParaSdk } from "@/components/ParaWalletProvider";
+import { toast } from "sonner";
 
 type FundView = "home" | "deposit" | "withdraw";
 
@@ -210,6 +212,7 @@ function FundsHome({ onClose, onPick }: { onClose: () => void; onPick: (v: FundV
   const me = useMe();
   const myId = useIdentity(me);
   const { balance, loading } = useMonBalance(me);
+  const paraSdk = useParaSdk();
   return (
     <>
       <ModalHeader title="Funds" onClose={onClose} />
@@ -245,8 +248,47 @@ function FundsHome({ onClose, onPick }: { onClose: () => void; onPick: (v: FundV
             Coming soon
           </span>
         </button>
+        {paraSdk && <ExportWalletButton hooks={paraSdk} />}
       </div>
     </>
+  );
+}
+
+// Opens Para's secure export portal (popup) where the user authenticates
+// and reveals their wallet's private key. The key is reconstructed inside
+// Para's hosted page — it never touches our code, so this is a pure
+// "open the door" button.
+function ExportWalletButton({ hooks }: { hooks: any }) {
+  const wallet = hooks.useWallet?.() ?? {};
+  const exp = hooks.useExportPrivateKey?.() ?? {};
+  if (!exp.exportPrivateKey && !exp.exportPrivateKeyAsync) return null;
+
+  const click = async () => {
+    try {
+      const walletId = wallet?.data?.id;
+      await exp.exportPrivateKeyAsync?.(walletId ? { walletId } : {});
+    } catch (e: any) {
+      console.warn("[export-wallet]", e);
+      toast.error(e?.message?.includes("popup")
+        ? "Popup blocked — allow popups and try again."
+        : "Couldn't open the export portal — try again.");
+    }
+  };
+
+  return (
+    <div>
+      <button
+        onClick={click}
+        disabled={exp.isPending}
+        className="w-full h-14 rounded-2xl bg-white/5 hover:bg-white/10 font-semibold inline-flex items-center justify-center gap-2 disabled:opacity-50"
+      >
+        <KeyRound className="size-4" />
+        {exp.isPending ? "Opening…" : "Export wallet"}
+      </button>
+      <p className="text-[10px] text-muted-foreground text-center mt-1.5">
+        Reveals your private key in Para's secure portal. Never share it with anyone.
+      </p>
+    </div>
   );
 }
 

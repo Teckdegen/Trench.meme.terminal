@@ -44,7 +44,7 @@ export type LandingToken = {
   name: string;
   imageUri: string | null;
   creatorAddress: string | null;
-  column: "new" | "final" | "migrated";
+  column: "new" | "final" | "migrated" | "latest";
   createdAt: string | null;
   progressBps: number;
   priceUsd: number | null;
@@ -171,7 +171,7 @@ async function nfOrderOnce(
   // practice — Nad.fun never wired the handler. We work around it by
   // deep-scanning `creation_time` (which already includes the live
   // `percent` field per token) and filtering client-side.
-  bucket: "creation_time" | "market_cap",
+  bucket: "creation_time" | "market_cap" | "latest_trade",
   limit: number,
   page = 1,
 ): Promise<DexMeta[]> {
@@ -237,6 +237,32 @@ async function nfOrderOnce(
   }
   return [];
 }
+
+// ─────────────────── Latest trades feed (trench 3rd column) ─────────────
+// The client polls every 5s, so cache hard server-side — one upstream call
+// per TTL window keeps us inside Nad.fun's rate limits no matter how many
+// tabs are open. A failed/empty refresh serves the last good list.
+const NF_LATEST_TTL_MS = 4_000;
+let nfLatestCache: { rows: LandingToken[]; at: number } | null = null;
+
+export const fetchLatestTradeFeed = createServerFn({ method: "GET" })
+  .inputValidator((d: Record<string, never> | undefined) => d ?? {})
+  .handler(async (): Promise<{ rows: LandingToken[]; fetchedAt: string }> => {
+    if (nfLatestCache && Date.now() - nfLatestCache.at < NF_LATEST_TTL_MS) {
+      return { rows: nfLatestCache.rows, fetchedAt: new Date(nfLatestCache.at).toISOString() };
+    }
+    const metas = await nfOrderOnce("latest_trade", 30);
+    if (metas.length === 0 && nfLatestCache) {
+      return { rows: nfLatestCache.rows, fetchedAt: new Date(nfLatestCache.at).toISOString() };
+    }
+    const rows = dedupeDexMeta(metas).map((r) => {
+      const row = dexMetaToLanding(r, "latest");
+      row.isGraduated = !!r.nfGraduated;
+      return row;
+    });
+    nfLatestCache = { rows, at: Date.now() };
+    return { rows, fetchedAt: new Date(nfLatestCache.at).toISOString() };
+  });
 
 /** Cached creation_time list — page 1 hot, plus a parallel deep scan
  *  of pages 2-N that surfaces older tokens (the ones actually making

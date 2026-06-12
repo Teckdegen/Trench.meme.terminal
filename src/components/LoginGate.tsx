@@ -5,7 +5,7 @@
 //
 // Mounted in __root.tsx alongside the rest of the global overlays.
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useMe } from "@/lib/useMe";
 import { APP_NAME, APP_LOGO } from "@/lib/brand";
 import { useParaSdk } from "@/components/ParaWalletProvider";
@@ -126,24 +126,30 @@ function OpenParaModalButton({ hooks }: { hooks: any }) {
   );
 }
 
-// Auto-opens Para's modal ONCE on first mount. We deliberately do NOT
+// Auto-opens Para's modal ONCE per page load. We deliberately do NOT
 // re-open on close — Para's email-code flow has multiple steps (enter
 // email → enter code) and any forced re-open during the flow resets the
 // modal to step 1, which is the "stuck on email page" bug we shipped.
 // If the user closes the modal, our gate UI still shows the Continue
 // button so they can re-trigger it themselves.
+//
+// The flag is MODULE-level, not a ref: the gate unmounts/remounts on
+// route changes (e.g. clicking the topbar logo), and a per-mount ref made
+// every remount auto-open the modal again — for signed-in users a brief
+// auth-state flicker then popped Para's wallet screen out of nowhere.
+let autoOpenedThisPageLoad = false;
+
 function AutoOpener({ hooks }: { hooks: any }) {
   const useAccount = hooks.useAccount;
   const useModal = hooks.useModal;
   const account = useAccount?.() ?? { isLoading: true, isConnected: false };
   const modal = useModal?.();
-  const opened = useRef(false);
 
   useEffect(() => {
     if (account.isLoading) return;
-    if (!opened.current && !account.isConnected) {
+    if (!autoOpenedThisPageLoad && account.isConnected === false) {
       modal?.openModal?.();
-      opened.current = true;
+      autoOpenedThisPageLoad = true;
     }
   }, [account.isLoading, account.isConnected, modal]);
 
