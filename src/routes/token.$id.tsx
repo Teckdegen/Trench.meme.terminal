@@ -127,7 +127,9 @@ function TokenPage() {
       const v = Math.max(0, monBal.balance - 0.005);
       setAmount(v > 0 ? v.toFixed(6).replace(/\.?0+$/, "") : "0");
     } else {
-      const v = tokBal.balance;
+      // Truncate, never round — toFixed rounds up, which can display (and
+      // later sell) more than the wallet actually holds.
+      const v = Math.floor(tokBal.balance * 1e6) / 1e6;
       setAmount(v > 0 ? v.toFixed(6).replace(/\.?0+$/, "") : "0");
     }
   };
@@ -136,9 +138,16 @@ function TokenPage() {
 
   // Live route + expected output. Execution is Dirol-first; server fallback
   // handles Nad.fun direct only when Dirol cannot route a token.
-  const rawAmount = amount && Number(amount) > 0
-    ? BigInt(Math.floor(Number(amount) * 1e18)).toString()
-    : "0";
+  const rawAmount = (() => {
+    if (!(amount && Number(amount) > 0)) return "0";
+    let raw = BigInt(Math.floor(Number(amount) * 1e18));
+    // Sells: float→wei conversion can overshoot the real balance by a few
+    // wei (float precision), and the router's transferFrom would revert
+    // with "ERC20: transfer amount exceeds balance". Clamp to the exact
+    // on-chain balance so "sell everything" actually executes.
+    if (side === "sell" && tokBal.raw > 0n && raw > tokBal.raw) raw = tokBal.raw;
+    return raw.toString();
+  })();
   const quote = useUnifiedQuote({
     token: isContract(t.addr) ? t.addr : undefined,
     side,

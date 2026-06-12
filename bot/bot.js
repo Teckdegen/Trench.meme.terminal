@@ -426,7 +426,22 @@ async function fireWithPara(row) {
   const token = lower(row.token_address);
   const side = row.side;
   const isBuy = side === "BUY";
-  const amountIn = asBigInt(row.amount_in);
+  let amountIn = asBigInt(row.amount_in);
+
+  // Queued SELL amounts can exceed the wallet's live balance (mirrored
+  // trades, float-derived amounts) — transferFrom then reverts with
+  // "ERC20: transfer amount exceeds balance" at preflight. Clamp to the
+  // exact on-chain balance before routing.
+  if (!isBuy) {
+    const bal = await publicClient.readContract({
+      address: token,
+      abi: ERC20_ABI,
+      functionName: "balanceOf",
+      args: [owner],
+    }).catch(() => null);
+    if (bal === 0n) throw new Error("no token balance to sell");
+    if (bal != null && amountIn > bal) amountIn = bal;
+  }
   const source = row.source === "limit" ? "LIMIT" : row.source === "copy" ? "COPY" : "MARKET";
   const feeBps = BigInt(Number(env[`FEE_BPS_${source}`] ?? env.FEE_BPS_MARKET ?? "0"));
   const feeAmount = 0n;

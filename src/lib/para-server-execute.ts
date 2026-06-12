@@ -572,6 +572,22 @@ export async function fireWithPara(p: {
   const pub = createPublicClient({ chain: monadChain as any, transport: monadTransport });
   const ownerAddr = p.owner as Address;
 
+  // SELL amounts arrive from float math in the UI (Max button, balance
+  // displays), which can overshoot the wallet's true balance by a few wei.
+  // The router's transferFrom then reverts with "ERC20: transfer amount
+  // exceeds balance" at preflight. Clamp to the exact on-chain balance so
+  // a full sell always goes through.
+  if (p.side === "SELL") {
+    const bal = await pub.readContract({
+      address: p.tokenAddress as Address,
+      abi: ERC20_ABI,
+      functionName: "balanceOf",
+      args: [ownerAddr],
+    }).catch(() => null) as bigint | null;
+    if (bal === 0n) throw new Error("No token balance to sell.");
+    if (bal != null && p.amountIn > bal) p.amountIn = bal;
+  }
+
   const FEE_BPS: Record<string, number> = {
     market: Number(process.env.FEE_BPS_MARKET ?? "85"),
     limit: Number(process.env.FEE_BPS_LIMIT ?? "250"),
