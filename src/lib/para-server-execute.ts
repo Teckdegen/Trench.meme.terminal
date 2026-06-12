@@ -1,6 +1,5 @@
 import {
   createPublicClient, fallback, http, encodeFunctionData, parseAbi,
-  hexToSignature,
   type Address, type Hex,
 } from "viem";
 import { supabaseAdmin } from "@/lib/supabase";
@@ -38,7 +37,6 @@ const NADFUN_ROUTER_ABI = parseAbi([
   "function buyWithNative((uint256 amountOutMin,address token,address to,uint256 deadline)) payable returns (uint256)",
   "function sell((uint256 amountIn,uint256 amountOutMin,address token,address to,uint256 deadline)) returns (uint256)",
   "function sellToNative((uint256 amountIn,uint256 amountOutMin,address token,address to,uint256 deadline)) returns (uint256)",
-  "function sellToNativeWithPermit((uint256 amountIn,uint256 amountOutMin,uint256 amountAllowance,address token,address to,uint256 deadline,uint8 v,bytes32 r,bytes32 s)) returns (uint256)",
   "function getAmountOut(address token,uint256 amountIn,bool isBuy) view returns (uint256)",
 ]);
 
@@ -53,9 +51,8 @@ const NADFUN_LEGACY_ROUTER_ABI = parseAbi([
 
 const ERC20_ABI = parseAbi([
   "function approve(address spender,uint256 amount) returns (bool)",
+  "function allowance(address owner,address spender) view returns (uint256)",
   "function balanceOf(address owner) view returns (uint256)",
-  "function name() view returns (string)",
-  "function nonces(address owner) view returns (uint256)",
   "function withdraw(uint256 amount)",
 ]);
 
@@ -172,41 +169,6 @@ async function paraRestSignTransaction(owner: string, tx: {
     keys: Object.keys(json ?? {}),
   });
   throw new Error("Para REST did not return a signed transaction.");
-}
-
-async function paraRestSignTypedData(owner: string, typedData: any): Promise<Hex> {
-  const { apiKey, baseUrl } = paraCreds();
-  const { walletId } = await paraWalletFor(owner);
-  const res = await fetch(`${baseUrl}/v1/wallets/${encodeURIComponent(walletId)}/sign-typed-data`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "X-API-Key": apiKey,
-      "Idempotency-Key": crypto.randomUUID(),
-    },
-    body: JSON.stringify({ typedData }),
-  });
-
-  const json = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    const message = json?.message || json?.error || `Para REST sign-typed-data failed (${res.status})`;
-    const code = json?.code ? `${json.code}: ` : "";
-    console.error("[para-rest] sign-typed-data failed", {
-      status: res.status,
-      requestId: res.headers.get("x-request-id"),
-      code: json?.code,
-      message,
-      walletId,
-      owner: `${owner.slice(0, 6)}...${owner.slice(-4)}`,
-    });
-    throw new Error(`${code}${message}`);
-  }
-
-  const raw = String(json?.signature ?? "");
-  if (!/^(0x)?[a-fA-F0-9]{130}$/.test(raw)) {
-    throw new Error("Para REST did not return a valid typed-data signature.");
-  }
-  return (raw.startsWith("0x") ? raw : `0x${raw}`) as Hex;
 }
 
 export async function sendViaPara(owner: string, opts: {
@@ -494,62 +456,25 @@ async function fireDirectNadfun(p: {
       return { hash, amountOut: route.amountOut };
     }
 
-    const [tokenName, nonce] = await Promise.all([
-      p.pub.readContract({
-        address: p.token,
+    const allowance = await p.pub.readContract({
+      address: p.token,
+      abi: ERC20_ABI,
+      functionName: "allowance",
+      args: [p.ownerAddr, NADFUN_ROUTER],
+    }).catch(() => 0n);
+    if (allowance < p.amountIn) {
+      const approveData = encodeFunctionData({
         abi: ERC20_ABI,
-        functionName: "name",
-        args: [],
-      }),
-      p.pub.readContract({
-        address: p.token,
-        abi: ERC20_ABI,
-        functionName: "nonces",
-        args: [p.ownerAddr],
-      }),
-    ]);
-    const typedData = {
-      domain: {
-        name: tokenName,
-        version: "1",
-        chainId: 143,
-        verifyingContract: p.token,
-      },
-      types: {
-        Permit: [
-          { name: "owner", type: "address" },
-          { name: "spender", type: "address" },
-          { name: "value", type: "uint256" },
-          { name: "nonce", type: "uint256" },
-          { name: "deadline", type: "uint256" },
-        ],
-      },
-      primaryType: "Permit",
-      message: {
-        owner: p.ownerAddr,
-        spender: NADFUN_ROUTER,
-        value: MAX_UINT256.toString(),
-        nonce: nonce.toString(),
-        deadline: deadline.toString(),
-      },
-    };
-    const sig = hexToSignature(await paraRestSignTypedData(p.owner, typedData));
-    const vRaw = sig.v != null ? Number(sig.v) : Number(sig.yParity ?? 0) + 27;
-    const v = vRaw < 27 ? vRaw + 27 : vRaw;
+        functionName: "approve",
+        args: [NADFUN_ROUTER, MAX_UINT256],
+      });
+      const ah = await sendViaPara(p.owner, { to: p.token, data: approveData });
+      await p.pub.waitForTransactionReceipt({ hash: ah });
+    }
     const sellData = encodeFunctionData({
       abi: NADFUN_ROUTER_ABI,
-      functionName: "sellToNativeWithPermit",
-      args: [{
-        amountIn: p.amountIn,
-        amountOutMin,
-        amountAllowance: MAX_UINT256,
-        token: p.token,
-        to: p.ownerAddr,
-        deadline,
-        v,
-        r: sig.r,
-        s: sig.s,
-      }],
+      functionName: "sellToNative",
+      args: [{ amountIn: p.amountIn, amountOutMin, token: p.token, to: p.ownerAddr, deadline }],
     });
     const hash = await sendViaPara(p.owner, { to: NADFUN_ROUTER, data: sellData });
     return { hash, amountOut: route.amountOut };
