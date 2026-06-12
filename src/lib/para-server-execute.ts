@@ -3,6 +3,7 @@ import {
   type Address, type Hex,
 } from "viem";
 import { supabaseAdmin } from "@/lib/supabase";
+import { getMonUsdPrice } from "@/lib/mon-usd";
 
 const RPC_URLS = [
   process.env.MONAD_RPC_URL,
@@ -50,6 +51,11 @@ const NADFUN_LEGACY_ROUTER_ABI = parseAbi([
 const ERC20_ABI = parseAbi([
   "function approve(address spender,uint256 amount) returns (bool)",
 ]);
+
+type FiredSwap = {
+  hash: Hex;
+  amountOut: bigint;
+};
 
 function admin() {
   assertServerRuntime();
@@ -251,7 +257,7 @@ function applySlippage(amount: bigint, slippageBps: number) {
   return amount - (amount * bps) / 10000n;
 }
 
-async function getNadfunRoute(pub: ReturnType<typeof createPublicClient>, token: Address, amountIn: bigint, isBuy: boolean) {
+async function getNadfunRoute(pub: any, token: Address, amountIn: bigint, isBuy: boolean) {
   const version = (await nadfunTokenMeta(token))?.version ?? null;
   if (version !== "V1") {
     try {
@@ -310,7 +316,7 @@ async function getDirolSwap(input: {
 }
 
 async function fireDirol(p: {
-  pub: ReturnType<typeof createPublicClient>;
+  pub: any;
   owner: string;
   ownerAddr: Address;
   token: Address;
@@ -318,7 +324,7 @@ async function fireDirol(p: {
   netIn: bigint;
   isBuy: boolean;
   slippageBps: number;
-}) {
+}): Promise<FiredSwap> {
   const swap = await getDirolSwap({
     token: p.token,
     owner: p.ownerAddr,
@@ -337,16 +343,17 @@ async function fireDirol(p: {
     await p.pub.waitForTransactionReceipt({ hash: approveHash, timeout: 60_000 });
   }
 
-  return sendViaPara(p.owner, {
+  const hash = await sendViaPara(p.owner, {
     to: swap.tx.to,
     data: swap.tx.data,
     value: p.isBuy ? p.netIn : BigInt(swap.tx.value || "0"),
     gas: swap.tx.estimatedGas ? BigInt(swap.tx.estimatedGas) : undefined,
   });
+  return { hash, amountOut: BigInt(swap.amountOut || "0") };
 }
 
 async function fireDirectNadfun(p: {
-  pub: ReturnType<typeof createPublicClient>;
+  pub: any;
   owner: string;
   ownerAddr: Address;
   token: Address;
@@ -354,7 +361,7 @@ async function fireDirectNadfun(p: {
   netIn: bigint;
   isBuy: boolean;
   slippageBps: number;
-}) {
+}): Promise<FiredSwap> {
   const deadline = BigInt(Math.floor(Date.now() / 1000) + 300);
   const route = await getNadfunRoute(p.pub, p.token, p.isBuy ? p.netIn : p.amountIn, p.isBuy);
   const amountOutMin = applySlippage(route.amountOut, p.slippageBps);
@@ -366,7 +373,8 @@ async function fireDirectNadfun(p: {
         functionName: "buyWithNative",
         args: [{ token: p.token, amountOutMin, to: p.ownerAddr, deadline }],
       });
-      return sendViaPara(p.owner, { to: NADFUN_ROUTER, data, value: p.netIn });
+      const hash = await sendViaPara(p.owner, { to: NADFUN_ROUTER, data, value: p.netIn });
+      return { hash, amountOut: route.amountOut };
     }
 
     const approveData = encodeFunctionData({
@@ -381,7 +389,8 @@ async function fireDirectNadfun(p: {
       functionName: "sellToNative",
       args: [{ token: p.token, amountIn: p.amountIn, amountOutMin, to: p.ownerAddr, deadline }],
     });
-    return sendViaPara(p.owner, { to: NADFUN_ROUTER, data: sellData });
+    const hash = await sendViaPara(p.owner, { to: NADFUN_ROUTER, data: sellData });
+    return { hash, amountOut: route.amountOut };
   }
 
   if (p.isBuy) {
@@ -390,7 +399,8 @@ async function fireDirectNadfun(p: {
       functionName: "buy",
       args: [{ token: p.token, amountOutMin, to: p.ownerAddr, deadline }],
     });
-    return sendViaPara(p.owner, { to: route.router, data, value: p.netIn });
+    const hash = await sendViaPara(p.owner, { to: route.router, data, value: p.netIn });
+    return { hash, amountOut: route.amountOut };
   }
 
   const approveData = encodeFunctionData({
@@ -405,7 +415,59 @@ async function fireDirectNadfun(p: {
     functionName: "sell",
     args: [{ token: p.token, amountIn: p.amountIn, amountOutMin, to: p.ownerAddr, deadline }],
   });
-  return sendViaPara(p.owner, { to: route.router, data: sellData });
+  const hash = await sendViaPara(p.owner, { to: route.router, data: sellData });
+  return { hash, amountOut: route.amountOut };
+}
+
+async function recordLocalTrade(p: {
+  pub: any;
+  hash: Hex;
+  owner: string;
+  token: Address;
+  isBuy: boolean;
+  amountIn: bigint;
+  netIn: bigint;
+  amountOut: bigint;
+}) {
+  try {
+    const sb = admin();
+    const meta = await nadfunTokenMeta(p.token).catch(() => null);
+    await sb.from("tokens").upsert({
+      address: p.token.toLowerCase(),
+      symbol: p.token.slice(2, 8).toUpperCase(),
+      name: meta?.version ? `Nad.fun ${meta.version}` : `Token ${p.token.slice(2, 8).toUpperCase()}`,
+    }, { onConflict: "address", ignoreDuplicates: true });
+
+    const receipt = await p.pub.getTransactionReceipt({ hash: p.hash });
+    const block = await p.pub.getBlock({ blockNumber: receipt.blockNumber });
+    const quoteAmount = p.isBuy ? p.netIn : p.amountOut;
+    const tokenAmount = p.isBuy ? p.amountOut : p.amountIn;
+    const monUsd = (await getMonUsdPrice().catch(() => ({ usd: 0 }))).usd || 0;
+    const valueUsd = monUsd > 0 ? (Number(quoteAmount) / 1e18) * monUsd : null;
+    const tokenQty = Number(tokenAmount) / 1e18;
+    const priceUsd = valueUsd != null && tokenQty > 0 ? valueUsd / tokenQty : null;
+
+    await sb.from("trades").upsert({
+      tx_hash: p.hash,
+      token_address: p.token.toLowerCase(),
+      account_address: p.owner.toLowerCase(),
+      side: p.isBuy ? "BUY" : "SELL",
+      token_amount: tokenAmount.toString(),
+      quote_amount: quoteAmount.toString(),
+      native_amount: quoteAmount.toString(),
+      price_usd: priceUsd,
+      value_usd: valueUsd,
+      block_number: Number(receipt.blockNumber),
+      log_index: 0,
+      created_at_chain: new Date(Number(block.timestamp) * 1000).toISOString(),
+    }, { onConflict: "tx_hash" });
+
+    await Promise.allSettled(["24H", "7D", "30D", "ALL"].map((w) =>
+      sb.rpc("compute_pnl_snapshots", { p_window: w }),
+    ));
+  } catch (e) {
+    console.warn("[para-exec] local trade record failed", e);
+  }
 }
 
 export async function fireWithPara(p: {
@@ -438,12 +500,12 @@ export async function fireWithPara(p: {
     console.warn("[para-exec] buy fee transfer skipped; executing swap without pre-fee tx");
   }
 
-  let hash: Hex;
+  let fired: FiredSwap;
   const token = p.tokenAddress as Address;
   const preferDirectNadfun = p.venue === "nadfun";
 
   if (preferDirectNadfun) {
-    hash = await fireDirectNadfun({
+    fired = await fireDirectNadfun({
       pub,
       owner: p.owner,
       ownerAddr,
@@ -455,7 +517,7 @@ export async function fireWithPara(p: {
     });
   } else {
     try {
-      hash = await fireDirol({
+      fired = await fireDirol({
         pub,
         owner: p.owner,
         ownerAddr,
@@ -469,7 +531,7 @@ export async function fireWithPara(p: {
       const meta = await nadfunTokenMeta(p.tokenAddress);
       if (!meta?.version) throw e;
       console.warn("[para-exec] Dirol route failed, falling back to direct Nad.fun route", e);
-      hash = await fireDirectNadfun({
+      fired = await fireDirectNadfun({
         pub,
         owner: p.owner,
         ownerAddr,
@@ -482,10 +544,22 @@ export async function fireWithPara(p: {
     }
   }
 
+  const hash = fired.hash;
+  await recordLocalTrade({
+    pub,
+    hash,
+    owner: p.owner,
+    token,
+    isBuy,
+    amountIn: p.amountIn,
+    netIn,
+    amountOut: fired.amountOut,
+  });
+
   if (!isBuy && feeAmount > 0n) {
     const rcpt = await pub.waitForTransactionReceipt({ hash, timeout: 60_000 });
     if (rcpt.status !== "success") throw new Error(`swap tx reverted (${hash})`);
-    const preMon = await pub.getBalance({ address: ownerAddr, blockTag: rcpt.blockNumber - 1n });
+    const preMon = await pub.getBalance({ address: ownerAddr, blockNumber: rcpt.blockNumber - 1n });
     const postMon = await pub.getBalance({ address: ownerAddr, blockNumber: rcpt.blockNumber });
     const monOut = postMon > preMon ? postMon - preMon : 0n;
     const sellFeeMon = (monOut * feeBps) / 10000n;

@@ -495,7 +495,7 @@ function TradeButton({
     const exp = BigInt(expectedOut || "0");
     const minOut = exp - (exp * BigInt(slippageBps)) / 10000n;
     await run({
-      venue: "dirol",
+      venue,
       side,
       tokenAddress: addr as `0x${string}`,
       rawAmount: BigInt(rawAmount || "0"),

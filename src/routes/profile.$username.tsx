@@ -23,6 +23,7 @@ import { Coins, Calendar, UserPlus, X, TrendingUp, BarChart3, Target, Activity, 
 import { Sparkline, FlatSparkline } from "@/components/Charts";
 import { fmtUsd, fmtPct } from "@/lib/fmt";
 import { fetchZerionPositions, type ZerionPosition } from "@/lib/zerion";
+import { computePnlFromTrades, type PnlWindowKey } from "@/lib/pnl";
 
 export const Route = createFileRoute("/profile/$username")({
   component: ProfilePage,
@@ -230,10 +231,31 @@ export function ProfilePageView({
   });
 
   const indexedUiTrades = useMemo(() => {
+    const state = new Map<string, { bal: number; avgCost: number }>();
+    const pnlByHash = new Map<string, number>();
+    const ordered = [...indexedTrades].sort(
+      (a, b) => +new Date(a.created_at_chain) - +new Date(b.created_at_chain),
+    );
+    for (const t of ordered) {
+      const tok = t.token_address;
+      const pos = state.get(tok) ?? { bal: 0, avgCost: 0 };
+      const amount = Number(t.value_usd ?? 0);
+      const tokenQty = Number(t.token_amount ?? "0") / 1e18;
+      if (t.side === "BUY") {
+        const nextBal = pos.bal + tokenQty;
+        if (nextBal > 0) pos.avgCost = ((pos.bal * pos.avgCost) + amount) / nextBal;
+        pos.bal = nextBal;
+        pnlByHash.set(t.tx_hash, 0);
+      } else {
+        pnlByHash.set(t.tx_hash, amount - tokenQty * pos.avgCost);
+        pos.bal = Math.max(0, pos.bal - tokenQty);
+      }
+      state.set(tok, pos);
+    }
     return indexedTrades.map((t) => {
       const action: "Buy" | "Sell" = t.side === "BUY" ? "Buy" : "Sell";
       const amount = Number(t.value_usd ?? 0);
-      const pnl = action === "Sell" ? amount * 0.02 : amount * -0.01;
+      const pnl = pnlByHash.get(t.tx_hash) ?? 0;
       const pct = amount > 0 ? (pnl / amount) * 100 : 0;
       return {
         token: placeholderToken(t.token_address),
@@ -265,11 +287,16 @@ export function ProfilePageView({
 
   const trades = indexedUiTrades.length > 0 ? indexedUiTrades : (liveTrades ?? []);
   const hasTrades = trades.length > 0;
+  const livePnl = useMemo(() => {
+    if (indexedTrades.length === 0) return null;
+    return computePnlFromTrades(indexedTrades).byWindow.get(PNL_WINDOW[range] as PnlWindowKey) ?? null;
+  }, [indexedTrades, range]);
   const totalPnl = useMemo(() => {
+    if (livePnl) return livePnl.realized;
     if (snap) return Number(snap.realized_usd ?? 0) + Number(snap.unrealized_usd ?? 0);
     return trades.reduce((a, t) => a + t.pnl, 0);
-  }, [snap, trades]);
-  const dayDelta = useMemo(() => Number(snap?.realized_usd ?? 0), [snap]);
+  }, [livePnl, snap, trades]);
+  const dayDelta = useMemo(() => livePnl?.realized ?? Number(snap?.realized_usd ?? 0), [livePnl, snap]);
   const dayUp = dayDelta >= 0;
   const topTrades = useMemo(() => [...trades].sort((a, b) => b.pnl - a.pnl).slice(0, 5), [trades]);
   const filteredSwaps = trades.filter((t) => tab === "All swaps" ? true : tab === "Buys" ? t.action === "Buy" : t.action === "Sell");
@@ -390,9 +417,9 @@ export function ProfilePageView({
 
             <div className="flex flex-wrap gap-x-5 gap-y-1 mt-4 text-xs text-muted-foreground">
               {/* Only show real data — no fake seeded "avg. hold" */}
-              {(snap?.trades_count ?? trades.length) > 0 && (
+              {(livePnl?.trades ?? snap?.trades_count ?? trades.length) > 0 && (
                 <span className="inline-flex items-center gap-1.5">
-                  <Coins className="size-3.5" /> {snap?.trades_count ?? trades.length} trades
+                  <Coins className="size-3.5" /> {livePnl?.trades ?? snap?.trades_count ?? trades.length} trades
                 </span>
               )}
               {(profile as any)?.created_at && (
@@ -493,9 +520,17 @@ export function ProfilePageView({
             </div>
 
             <div className="mt-3 grid grid-cols-3 gap-2">
-              <Kpi icon={Target} label="Win rate" value={snap?.win_rate_pct != null ? `${Number(snap.win_rate_pct).toFixed(0)}%` : "—"} />
-              <Kpi icon={Activity} label="Trades" value={String(snap?.trades_count ?? trades.length)} />
-              <Kpi icon={BarChart3} label="Volume" value={fmtUsd(Number(snap?.volume_usd ?? 0))} />
+              <Kpi
+                icon={Target}
+                label="Win rate"
+                value={
+                  livePnl && livePnl.sells > 0
+                    ? `${((livePnl.wins / livePnl.sells) * 100).toFixed(0)}%`
+                    : snap?.win_rate_pct != null ? `${Number(snap.win_rate_pct).toFixed(0)}%` : "—"
+                }
+              />
+              <Kpi icon={Activity} label="Trades" value={String(livePnl?.trades ?? snap?.trades_count ?? trades.length)} />
+              <Kpi icon={BarChart3} label="Volume" value={fmtUsd(Number(livePnl?.volume ?? snap?.volume_usd ?? 0))} />
             </div>
           </div>
 

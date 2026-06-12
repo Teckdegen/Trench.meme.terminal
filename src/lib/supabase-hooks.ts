@@ -433,6 +433,7 @@ export type TradeRow = {
   tx_hash: string;
   token_address: string;
   side: "BUY" | "SELL";
+  token_amount: string;
   value_usd: number | null;
   created_at_chain: string;
 };
@@ -446,7 +447,7 @@ export function useMyTrades(me: string | undefined, limit = 50) {
     const sb = supabase();
     let cancel = false;
     const refresh = () => sb.from("trades")
-      .select("tx_hash, token_address, side, value_usd, created_at_chain")
+      .select("tx_hash, token_address, side, token_amount, value_usd, created_at_chain")
       .eq("account_address", me.toLowerCase())
       .order("created_at_chain", { ascending: false })
       .limit(limit)

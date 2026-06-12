@@ -20,6 +20,7 @@ import { Sparkline } from "@/components/Charts";
 import { MobileTabs } from "@/components/SimpleLayout";
 import { useDocumentTitle } from "@/lib/useDocumentTitle";
 import { txUrl } from "@/lib/explorer";
+import { computePnlFromTrades } from "@/lib/pnl";
 export const Route = createFileRoute("/wallet")({ component: PortfolioPage });
 
 function PortfolioPage() {
@@ -30,14 +31,18 @@ function PortfolioPage() {
   const { trades, loading: tradesLoading } = useMyTrades(me, 40);
   const { posts, loading: postsLoading } = useMyPosts(me);
   const { profile } = useAccountProfile(me);
+  const livePnl = useMemo(() => {
+    if (trades.length === 0) return null;
+    return computePnlFromTrades(trades).byWindow.get("ALL") ?? null;
+  }, [trades]);
 
   const roi = useMemo(() => {
-    const r = Number(snap?.realized_usd ?? 0);
+    const r = Number(livePnl?.realized ?? snap?.realized_usd ?? 0);
     const u = Number(snap?.unrealized_usd ?? 0);
-    const vol = Number(snap?.volume_usd ?? 0);
+    const vol = Number(livePnl?.volume ?? snap?.volume_usd ?? 0);
     if (vol <= 0) return 0;
     return ((r + u) / vol) * 100;
-  }, [snap]);
+  }, [livePnl, snap]);
 
   const equityCurve = useMemo(() => {
     if (trades.length < 2) return Array.from({ length: 24 }, (_, i) => 20 + i * 0.5);
