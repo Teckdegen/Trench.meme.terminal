@@ -12,18 +12,19 @@ import {
   parseAbi,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { Para, Environment } from "@getpara/server-sdk";
-import { createParaViemClient } from "@getpara/viem-v2-integration";
 
 const env = process.env;
 const SUPABASE_URL = env.SUPABASE_URL || env.VITE_SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = env.SUPABASE_SERVICE_ROLE_KEY;
-const PARA_API_KEY = env.PARA_API_KEY || env.VITE_PARA_API_KEY;
+const PARA_REST_API_KEY = env.PARA_API_SECRET || env.PARA_REST_API_KEY || env.PARA_API_KEY || env.VITE_PARA_API_KEY;
+const PARA_REST_BASE = (env.PARA_API_BASE || "https://api.getpara.com").replace(/\/$/, "");
 const OPTIONAL = [
   "SUPABASE_URL",
   "VITE_SUPABASE_URL",
   "VITE_PARA_API_KEY",
   "PARA_API_SECRET",
+  "PARA_REST_API_KEY",
+  "PARA_API_BASE",
   "MONAD_RPC_URL",
   "FEE_WALLET_ADDRESS",
   "FEE_WALLET_PRIVATE_KEY",
@@ -41,7 +42,7 @@ const OPTIONAL = [
 const missing = [
   !SUPABASE_URL ? "SUPABASE_URL or VITE_SUPABASE_URL" : null,
   !SUPABASE_SERVICE_ROLE_KEY ? "SUPABASE_SERVICE_ROLE_KEY" : null,
-  !PARA_API_KEY ? "PARA_API_KEY or VITE_PARA_API_KEY" : null,
+  !PARA_REST_API_KEY ? "PARA_API_SECRET or PARA_REST_API_KEY" : null,
 ].filter(Boolean);
 if (missing.length) {
   console.error("[bot] fatal: missing required Railway variables:", missing.join(", "));
@@ -49,7 +50,7 @@ if (missing.length) {
   process.exit(1);
 }
 
-console.log("trench.meme bot - Para runtime");
+console.log("trench.meme bot - Para REST runtime");
 console.log("required env: all set");
 for (const key of OPTIONAL) {
   console.log(`${env[key] ? "yes" : "no "} ${key}${env[key] ? "" : " (feature may skip)"}`);
@@ -82,7 +83,7 @@ const WMON = "0x3bd359C1119dA7Da1D913D1C4D2B7c461115433A";
 const FIRE_COOLDOWN_MS = 5 * 60_000;
 
 if (!PARA_API_SECRET) {
-  console.warn("[bot] PARA_API_SECRET is empty. Para signing uses PARA_API_KEY here, but keep the secret in Railway.");
+  console.warn("[bot] PARA_API_SECRET is empty. Para REST signing will use PARA_REST_API_KEY/PARA_API_KEY if present.");
 }
 
 const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
@@ -247,10 +248,30 @@ server.listen(PORT, HOST, () => {
   log("gun-relay", `listening on http://${HOST}:${PORT} data=${GUN_DATA_DIR}`);
 });
 
-async function paraClientFor(owner) {
+async function paraRest(path, init = {}) {
+  const headers = new Headers(init.headers);
+  headers.set("content-type", "application/json");
+  headers.set("X-API-Key", PARA_REST_API_KEY);
+  const res = await fetch(`${PARA_REST_BASE}${path}`, {
+    ...init,
+    headers,
+  });
+  const jsonBody = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const message = jsonBody?.message || jsonBody?.error || `Para REST request failed (${res.status})`;
+    const code = jsonBody?.code ? `${jsonBody.code}: ` : "";
+    const err = new Error(`${code}${message}`);
+    err.code = jsonBody?.code;
+    err.walletId = jsonBody?.walletId;
+    throw err;
+  }
+  return jsonBody;
+}
+
+async function paraWalletFor(owner) {
   const { data, error } = await sb
     .from("para_wallets")
-    .select("session, session_cookie, expires_at, updated_at")
+    .select("wallet_id, expires_at, updated_at")
     .eq("owner_address", lower(owner))
     .maybeSingle();
   if (error) throw error;
@@ -260,31 +281,57 @@ async function paraClientFor(owner) {
       ? +new Date(data.updated_at) + 7 * 86_400_000
       : 0;
   if (expiresAt && Date.now() > expiresAt) throw new Error(`Para session expired for ${owner}; sign in again`);
-  if (!data?.session) throw new Error(`no zero-popup Para session for ${owner}; sign out and back in`);
+  if (data?.wallet_id) return data.wallet_id;
 
-  try {
-    const decoded = JSON.parse(Buffer.from(data.session, "base64").toString("utf8"));
-    const wallets = Object.values(decoded.wallets || {});
-    const hasEvmSigner = wallets.some((w) => w?.type === "EVM" && w?.signer);
-    if (!hasEvmSigner || !decoded.sessionCookie) throw new Error("missing signer");
-  } catch {
-    throw new Error(`saved Para session is not zero-popup ready for ${owner}; sign out and back in`);
-  }
-
-  const para = new Para(Environment.PROD, PARA_API_KEY);
-  if (data.session && typeof para.importSession === "function") {
-    await para.importSession(data.session);
-  } else {
-    throw new Error(`Para importSession unavailable for ${owner}`);
-  }
-
-  return createParaViemClient({
-    para,
-    walletClientConfig: {
-      chain: monad,
-      transport: MONAD_TRANSPORT,
-    },
+  const query = new URLSearchParams({
+    type: "EVM",
+    status: "ready",
+    address: lower(owner),
+    limit: "1",
   });
+  const listed = await paraRest(`/v1/wallets?${query}`);
+  const wallet = listed?.data?.find((row) => row?.id && lower(row.address) === lower(owner));
+  if (!wallet?.id) {
+    throw new Error(`No Para API wallet for ${short(owner)}. Sign in again so the app can create one.`);
+  }
+
+  await sb.from("para_wallets").upsert({
+    owner_address: lower(owner),
+    wallet_id: wallet.id,
+    chain_type: "ethereum",
+    updated_at: new Date().toISOString(),
+  }, { onConflict: "owner_address" });
+
+  return wallet.id;
+}
+
+async function paraRestSignTransaction(owner, tx) {
+  const walletId = await paraWalletFor(owner);
+  const jsonBody = await paraRest(`/v1/wallets/${encodeURIComponent(walletId)}/sign-transaction`, {
+    method: "POST",
+    headers: { "Idempotency-Key": crypto.randomUUID() },
+    body: JSON.stringify({
+      broadcast: true,
+      transaction: {
+        to: tx.to,
+        chainId: 143,
+        type: 0,
+        value: (tx.value ?? 0n).toString(),
+        data: tx.data || "0x",
+        nonce: tx.nonce,
+        gasLimit: tx.gasLimit.toString(),
+        gasPrice: tx.gasPrice.toString(),
+      },
+    }),
+  });
+
+  if (typeof jsonBody?.txHash === "string" && /^0x[a-fA-F0-9]{64}$/.test(jsonBody.txHash)) {
+    return jsonBody.txHash;
+  }
+  if (typeof jsonBody?.signedTransaction === "string" && jsonBody.signedTransaction.startsWith("0x")) {
+    return publicClient.sendRawTransaction({ serializedTransaction: jsonBody.signedTransaction });
+  }
+  throw new Error("Para REST did not return a transaction hash.");
 }
 
 async function sendViaPara(owner, tx) {
@@ -302,21 +349,29 @@ async function sendViaPara(owner, tx) {
       if (!tx.data) gas = 42_000n;
     }
   }
-  const client = await paraClientFor(owner);
+  if ((tx.value ?? 0n) > 0n) {
+    const bal = await publicClient.getBalance({ address: lower(owner) });
+    const gasPriceForBalance = await publicClient.getGasPrice().catch(() => 0n);
+    const needed = (tx.value ?? 0n) + (gas && gasPriceForBalance ? gas * gasPriceForBalance : 0n);
+    if (bal < needed) throw new Error(`Insufficient MON for amount plus gas in ${short(owner)}.`);
+  }
+  const gasPrice = await publicClient.getGasPrice();
+  const nonce = await publicClient.getTransactionCount({ address: lower(owner), blockTag: "pending" });
   const req = {
-    chain: monad,
     to: tx.to,
     data: tx.data,
     value: tx.value,
-    gas,
+    nonce,
+    gasLimit: gas || 42_000n,
+    gasPrice,
   };
   try {
-    return await client.sendTransaction(req);
+    return await paraRestSignTransaction(owner, req);
   } catch (err) {
     const msg = String(err?.shortMessage || err?.message || err);
     if (!/rpc request failed|network|timeout|fetch/i.test(msg)) throw err;
     await new Promise((resolve) => setTimeout(resolve, 900));
-    return client.sendTransaction(req);
+    return paraRestSignTransaction(owner, req);
   }
 }
 
