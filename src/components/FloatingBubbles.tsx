@@ -13,11 +13,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import {
-  MessageSquare, Users, Bell, X, ArrowLeft, Send, ExternalLink,
+  MessageSquare, Users, Bell, X, ArrowLeft, Send, ExternalLink, Wallet,
 } from "lucide-react";
 import { useMe } from "@/lib/useMe";
 import {
-  useDMThreads, useDMMessages, sendDM, GUN_ENABLED as DM_GUN,
+  useDMThreads, useDMMessages, sendDM, markThreadRead, GUN_ENABLED as DM_GUN,
 } from "@/lib/gun-dms";
 import {
   useMyCabals, useCabalChat, sendCabalChat, GUN_ENABLED as CABAL_GUN,
@@ -127,6 +127,16 @@ export function FloatingBubbles() {
           (resets dmOpen/cabalOpen) so the user can always pick which
           thread/cabal to open — never auto-jumps to the last one. */}
       <div className="flex flex-col gap-2">
+        <Link
+          to="/wallet"
+          aria-label="Portfolio"
+          title="Portfolio"
+          onClick={close}
+          className="relative size-12 rounded-full grid place-items-center bg-background border border-white/15 hover:bg-white/5 transition-colors"
+          style={{ boxShadow: "0 8px 24px rgba(0,0,0,0.4)" }}
+        >
+          <Wallet className="size-5" />
+        </Link>
         <Bubble
           icon={<MessageSquare className="size-5" />}
           label="DMs"
@@ -275,6 +285,15 @@ function DmThreadPanel({
 }: { me: string; partner: string; onBack: () => void; onClose: () => void }) {
   const messages = useDMMessages(me, partner);
   const [draft, setDraft] = useState("");
+
+  // Reading the thread counts as reading it — clear the unread badge the
+  // moment the panel opens and keep it cleared as new messages stream in
+  // while it's open. (Previously only the full inbox page marked threads
+  // read, so the bubble badge stuck around until you replied.)
+  useEffect(() => {
+    markThreadRead(me, partner);
+  }, [me, partner, messages.length]);
+
   const send = async () => {
     if (!draft.trim()) return;
     await sendDM(me, partner, draft.trim());

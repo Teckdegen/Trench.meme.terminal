@@ -4,6 +4,32 @@ import { toBlob } from "html-to-image";
 import { toast } from "sonner";
 import { APP_NAME } from "@/lib/brand";
 
+// html-to-image walks document.styleSheets to embed fonts. Stylesheets
+// injected by third-party SDKs from CDNs WITHOUT a crossorigin attribute
+// (e.g. Font Awesome from cdnjs) can't be read (SecurityError), so the lib
+// re-fetches and re-parses them — and its parser throws "Failed to execute
+// 'insertRule'" noise. None of those sheets style the card, so detach them
+// for the duration of the capture and restore afterwards.
+async function withUnreadableSheetsRemoved<T>(fn: () => Promise<T>): Promise<T> {
+  const removed: { node: Element; parent: Node; next: Node | null }[] = [];
+  for (const sheet of Array.from(document.styleSheets)) {
+    try {
+      void sheet.cssRules; // throws for CORS-restricted sheets
+    } catch {
+      const node = sheet.ownerNode as Element | null;
+      if (node?.parentNode) {
+        removed.push({ node, parent: node.parentNode, next: node.nextSibling });
+        node.parentNode.removeChild(node);
+      }
+    }
+  }
+  try {
+    return await fn();
+  } finally {
+    for (const r of removed) r.parent.insertBefore(r.node, r.next);
+  }
+}
+
 // html-to-image must re-fetch every <img> in the card; cross-origin hosts
 // without CORS headers make that fetch throw and kill the export. Swap each
 // remote image for a data URL (fetched through our server proxy) first.
@@ -86,7 +112,7 @@ export function PnLShareCard(p: Props) {
       let lastErr: unknown = null;
       for (const opts of [base, { ...base, skipFonts: true }]) {
         try {
-          blob = await toBlob(node, opts);
+          blob = await withUnreadableSheetsRemoved(() => toBlob(node, opts));
           if (blob && blob.size > 0) break;
           blob = null;
         } catch (e) {
