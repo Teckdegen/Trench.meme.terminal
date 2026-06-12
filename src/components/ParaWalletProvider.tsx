@@ -62,19 +62,23 @@ function ParaInner({ apiKey, children }: { apiKey: string; children: ReactNode }
       configOverrides={{
         authConfig: {
           oAuthMethods: ["GOOGLE", "APPLE"],
-          authMethods: ["EMAIL", "OAUTH"],
         },
         modalConfig: {
           hideWallets: true,
           logo: APP_LOGO,
         },
+        // Black / white / purple only. NOTE: Para derives every surface and
+        // muted-text shade by mixing the background ladder toward the ACCENT
+        // color by foregroundMixRatio (their default is 0.04). A ratio of 1
+        // collapses the whole palette to flat #a855f7 — purple-on-purple,
+        // i.e. the invisible modal we shipped. Keep this small.
         themeConfig: {
           mode: "dark",
-          backgroundColor: "#050008",
-          foregroundColor: "#f8f5ff",
+          backgroundColor: "#000000",
+          foregroundColor: "#ffffff",
           accentColor: "#a855f7",
           borderRadius: "lg",
-          foregroundMixRatio: 1,
+          foregroundMixRatio: 0.08,
         },
       }}
       paraModalConfig={{
@@ -86,11 +90,11 @@ function ParaInner({ apiKey, children }: { apiKey: string; children: ReactNode }
         logo: APP_LOGO,
         theme: {
           mode: "dark",
-          backgroundColor: "#050008",
-          foregroundColor: "#f8f5ff",
+          backgroundColor: "#000000",
+          foregroundColor: "#ffffff",
           accentColor: "#a855f7",
           borderRadius: "lg",
-          foregroundMixRatio: 1,
+          foregroundMixRatio: 0.08,
         },
         recoverySecretStepEnabled: true,
         twoFactorAuthEnabled: false,
