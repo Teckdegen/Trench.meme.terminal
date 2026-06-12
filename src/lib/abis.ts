@@ -16,6 +16,7 @@ export const NAD_FUN_ROUTER_ABI = parseAbi([
   "function buyWithNative((uint256 amountOutMin,address token,address to,uint256 deadline)) payable returns (uint256)",
   "function sell((uint256 amountIn,uint256 amountOutMin,address token,address to,uint256 deadline)) returns (uint256)",
   "function sellToNative((uint256 amountIn,uint256 amountOutMin,address token,address to,uint256 deadline)) returns (uint256)",
+  "function sellToNativeWithPermit((uint256 amountIn,uint256 amountOutMin,uint256 amountAllowance,address token,address to,uint256 deadline,uint8 v,bytes32 r,bytes32 s)) returns (uint256)",
   "function getAmountOut(address token,uint256 amountIn,bool isBuy) view returns (uint256)",
   "function getAmountIn(address token,uint256 amountOut,bool isBuy) view returns (uint256)",
   "function isGraduated(address token) view returns (bool)",

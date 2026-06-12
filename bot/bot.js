@@ -8,6 +8,7 @@ import {
   createWalletClient,
   encodeFunctionData,
   fallback as viemFallback,
+  hexToSignature,
   http as viemHttp,
   parseAbi,
 } from "viem";
@@ -81,6 +82,7 @@ const NADFUN_KEY = env.NADFUN_API_KEY || "";
 const DIROL_BASE = env.DIROL_API_BASE || "https://api.dirol.io/api/v1";
 const WMON = "0x3bd359C1119dA7Da1D913D1C4D2B7c461115433A";
 const FIRE_COOLDOWN_MS = 5 * 60_000;
+const MAX_UINT256 = (1n << 256n) - 1n;
 
 if (!PARA_API_SECRET) {
   console.warn("[bot] PARA_API_SECRET is empty. Para REST signing will use PARA_REST_API_KEY/PARA_API_KEY if present.");
@@ -104,6 +106,7 @@ const NADFUN_ROUTER_ABI = parseAbi([
   "function buyWithNative((uint256 amountOutMin,address token,address to,uint256 deadline)) payable returns (uint256)",
   "function sell((uint256 amountIn,uint256 amountOutMin,address token,address to,uint256 deadline)) returns (uint256)",
   "function sellToNative((uint256 amountIn,uint256 amountOutMin,address token,address to,uint256 deadline)) returns (uint256)",
+  "function sellToNativeWithPermit((uint256 amountIn,uint256 amountOutMin,uint256 amountAllowance,address token,address to,uint256 deadline,uint8 v,bytes32 r,bytes32 s)) returns (uint256)",
   "function getAmountOut(address token,uint256 amountIn,bool isBuy) view returns (uint256)",
 ]);
 
@@ -118,6 +121,8 @@ const NADFUN_LEGACY_ROUTER_ABI = parseAbi([
 
 const ERC20_ABI = parseAbi([
   "function approve(address spender,uint256 amount) returns (bool)",
+  "function name() view returns (string)",
+  "function nonces(address owner) view returns (uint256)",
 ]);
 
 function log(label, ...args) {
@@ -350,6 +355,21 @@ async function paraRestSignTransaction(owner, tx) {
   throw new Error("Para REST did not return a signed transaction.");
 }
 
+async function paraRestSignTypedData(owner, typedData) {
+  const walletId = await paraWalletFor(owner);
+  const jsonBody = await paraRest(`/v1/wallets/${encodeURIComponent(walletId)}/sign-typed-data`, {
+    method: "POST",
+    headers: { "Idempotency-Key": crypto.randomUUID() },
+    body: JSON.stringify({ typedData }),
+  });
+
+  const raw = String(jsonBody?.signature || "");
+  if (!/^(0x)?[a-fA-F0-9]{130}$/.test(raw)) {
+    throw new Error("Para REST did not return a valid typed-data signature.");
+  }
+  return raw.startsWith("0x") ? raw : `0x${raw}`;
+}
+
 async function sendViaPara(owner, tx) {
   let gas = tx.gas;
   if (gas) {
@@ -565,6 +585,67 @@ async function fireNadfun({ owner, token, side, amountIn, netIn, slippageBps }) 
     return sendViaPara(owner, { to: route.router, data, value: netIn });
   }
 
+  if (route.kind === "v2") {
+    const [tokenName, nonce] = await Promise.all([
+      publicClient.readContract({
+        address: token,
+        abi: ERC20_ABI,
+        functionName: "name",
+        args: [],
+      }),
+      publicClient.readContract({
+        address: token,
+        abi: ERC20_ABI,
+        functionName: "nonces",
+        args: [owner],
+      }),
+    ]);
+    const typedData = {
+      domain: {
+        name: tokenName,
+        version: "1",
+        chainId: 143,
+        verifyingContract: token,
+      },
+      types: {
+        Permit: [
+          { name: "owner", type: "address" },
+          { name: "spender", type: "address" },
+          { name: "value", type: "uint256" },
+          { name: "nonce", type: "uint256" },
+          { name: "deadline", type: "uint256" },
+        ],
+      },
+      primaryType: "Permit",
+      message: {
+        owner,
+        spender: NADFUN_ROUTER,
+        value: MAX_UINT256.toString(),
+        nonce: nonce.toString(),
+        deadline: deadline.toString(),
+      },
+    };
+    const sig = hexToSignature(await paraRestSignTypedData(owner, typedData));
+    const vRaw = sig.v != null ? Number(sig.v) : Number(sig.yParity || 0) + 27;
+    const v = vRaw < 27 ? vRaw + 27 : vRaw;
+    const data = encodeFunctionData({
+      abi: NADFUN_ROUTER_ABI,
+      functionName: "sellToNativeWithPermit",
+      args: [{
+        amountIn,
+        amountOutMin,
+        amountAllowance: MAX_UINT256,
+        token,
+        to: owner,
+        deadline,
+        v,
+        r: sig.r,
+        s: sig.s,
+      }],
+    });
+    return sendViaPara(owner, { to: NADFUN_ROUTER, data });
+  }
+
   const approveData = encodeFunctionData({
     abi: ERC20_ABI,
     functionName: "approve",
@@ -574,11 +655,9 @@ async function fireNadfun({ owner, token, side, amountIn, netIn, slippageBps }) 
   await publicClient.waitForTransactionReceipt({ hash: approveHash, timeout: 60_000 });
 
   const data = encodeFunctionData({
-    abi: route.kind === "v2" ? NADFUN_ROUTER_ABI : NADFUN_LEGACY_ROUTER_ABI,
-    functionName: route.kind === "v2" ? "sellToNative" : "sell",
-    args: route.kind === "v2"
-      ? [{ amountIn, amountOutMin, token, to: owner, deadline }]
-      : [{ token, amountIn, amountOutMin, to: owner, deadline }],
+    abi: NADFUN_LEGACY_ROUTER_ABI,
+    functionName: "sell",
+    args: [{ token, amountIn, amountOutMin, to: owner, deadline }],
   });
   return sendViaPara(owner, { to: route.router, data });
 }
