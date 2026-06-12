@@ -7,7 +7,7 @@ import { PageTitle } from "@/components/SimpleLayout";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { SUPABASE_ENABLED } from "@/lib/supabase-hooks";
-import { Crown, Trophy } from "lucide-react";
+import { Trophy } from "lucide-react";
 import { VerifiedBadge } from "@/components/VerifiedBadge";
 import { useDocumentTitle } from "@/lib/useDocumentTitle";
 
@@ -108,7 +108,6 @@ function Leaderboards() {
     return () => { cancel = true; };
   }, [range, sortKey]);
 
-  const podium = useMemo(() => (rows ?? []).slice(0, 3), [rows]);
   const rest = useMemo(() => rows ?? [], [rows]);
 
   return (
@@ -149,52 +148,6 @@ function Leaderboards() {
 
       {rows && rows.length > 0 && (
         <>
-          {/* Podium - top 3 */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {podium.map((r, i) => (
-              <Link
-                key={r.account_address}
-                {...profileRoute(r.handle ?? r.account_address)}
-                className={`rounded-2xl bg-surface border p-4 flex items-center gap-3 hover:bg-white/[0.04] ${
-                  i === 0 ? "border-yellow-500/40 ring-1 ring-yellow-500/20"
-                  : i === 1 ? "border-white/10"
-                  : "border-amber-700/30"
-                }`}
-              >
-                <div className="relative shrink-0">
-                  {r.image_uri ? (
-                    <img src={r.image_uri} className="size-12 rounded-full object-cover" alt="" />
-                  ) : (
-                    <div className="size-12 rounded-full grid place-items-center text-base font-bold text-white"
-                         style={{ background: gradFor(r.account_address) }}>
-                      {r.account_address.slice(2, 4).toUpperCase()}
-                    </div>
-                  )}
-                  <span className={`absolute -bottom-1 -right-1 size-6 rounded-full grid place-items-center text-[10px] font-black ring-2 ring-background ${
-                    i === 0 ? "bg-yellow-500 text-black"
-                    : i === 1 ? "bg-white/20 text-white"
-                    : "bg-amber-700 text-white"
-                  }`}>
-                    {i === 0 ? <Crown className="size-3" /> : i + 1}
-                  </span>
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-semibold truncate inline-flex items-baseline min-w-0">
-                    <span className="truncate">{traderLabel(r)}</span>
-                    <VerifiedBadge verified={r.is_verified} />
-                  </p>
-                  <p className={`text-lg font-bold ${r.realized_usd >= 0 ? "text-up" : "text-down"}`}>
-                    {r.realized_usd >= 0 ? "+" : ""}{fmtUsd(r.realized_usd)}
-                  </p>
-                  <p className="text-[11px] text-muted-foreground">
-                    {r.win_rate_pct != null ? `${r.win_rate_pct.toFixed(0)}% WR` : "-"} - {r.trades_count} trades
-                  </p>
-                </div>
-              </Link>
-            ))}
-          </div>
-
-          {/* Full table */}
           <div className="rounded-2xl bg-surface border border-white/5 overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full min-w-[680px] text-sm">
@@ -211,7 +164,7 @@ function Leaderboards() {
                 <tbody>
                   {rest.map((r, i) => (
                     <tr key={r.account_address} className="border-b border-white/5 hover:bg-white/[0.02]">
-                      <td className="px-3 py-2.5 text-muted-foreground tabular-nums">{i + 4}</td>
+                      <td className="px-3 py-2.5 text-muted-foreground tabular-nums">{i + 1}</td>
                       <td className="px-3 py-2.5">
                         <Link {...profileRoute(r.handle ?? r.account_address)} className="flex items-center gap-2 hover:underline">
                           {r.image_uri ? (
