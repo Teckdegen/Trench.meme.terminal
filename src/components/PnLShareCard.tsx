@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { Camera, Download, Share2, Twitter, X } from "lucide-react";
-import { toPng } from "html-to-image";
+import { toBlob } from "html-to-image";
 import { toast } from "sonner";
 import { APP_NAME } from "@/lib/brand";
 
@@ -71,36 +71,57 @@ export function PnLShareCard(p: Props) {
     : `${up ? "+" : ""}${pct.toFixed(0)}%`;
 
   const download = async () => {
-    if (!ref.current) return;
+    const node = ref.current;
+    if (!node) return;
     setBusy(true);
     try {
-      await inlineRemoteImages(ref.current);
-      let dataUrl: string;
-      try {
-        dataUrl = await toPng(ref.current, {
-          pixelRatio: 2.5,
-          cacheBust: true,
-          backgroundColor: "#030006",
-        });
-      } catch {
-        // Some browsers choke on webfont embedding — retry without fonts
-        // rather than failing the download outright.
-        dataUrl = await toPng(ref.current, {
-          pixelRatio: 2.5,
-          cacheBust: true,
-          backgroundColor: "#030006",
-          skipFonts: true,
-        });
+      await inlineRemoteImages(node);
+
+      // Three rendering attempts, progressively more conservative:
+      // 1) full quality  2) without webfont embedding (some browsers choke)
+      // 3) without fonts AND without images. Blob > data-URL: browsers
+      // silently drop anchor downloads with multi-MB data: hrefs.
+      const base = { pixelRatio: 2, cacheBust: true, backgroundColor: "#030006" };
+      let blob: Blob | null = null;
+      let lastErr: unknown = null;
+      for (const opts of [base, { ...base, skipFonts: true }]) {
+        try {
+          blob = await toBlob(node, opts);
+          if (blob && blob.size > 0) break;
+          blob = null;
+        } catch (e) {
+          lastErr = e;
+        }
       }
+      if (!blob) throw lastErr ?? new Error("empty render");
+
+      const file = new File([blob], `trench-${p.symbol}-${Date.now()}.png`, { type: "image/png" });
+
+      // Mobile: prefer the native share sheet (it has "Save Image") —
+      // anchor downloads are unreliable on iOS Safari.
+      const nav = navigator as any;
+      if (nav.canShare?.({ files: [file] }) && /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)) {
+        try {
+          await nav.share({ files: [file] });
+          return;
+        } catch (e: any) {
+          if (e?.name === "AbortError") return; // user closed the sheet
+          /* fall through to anchor download */
+        }
+      }
+
+      const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = dataUrl;
-      a.download = `trench-${p.symbol}-${Date.now()}.png`;
+      a.href = url;
+      a.download = file.name;
       document.body.appendChild(a);
       a.click();
       a.remove();
-    } catch (e) {
+      // Give the browser a moment to start the download before revoking.
+      setTimeout(() => URL.revokeObjectURL(url), 30_000);
+    } catch (e: any) {
       console.warn("[pnl-card] PNG export failed", e);
-      toast.error("Couldn't save the image — try again.");
+      toast.error(`Couldn't save the image${e?.message ? ` — ${String(e.message).slice(0, 80)}` : ""}`);
     } finally {
       setBusy(false);
     }
