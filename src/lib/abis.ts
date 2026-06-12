@@ -13,9 +13,9 @@ export const ERC20_ABI = parseAbi([
 // NadFunRouter v2 — buy/sell helpers used by simpleBuy / simpleSell.
 // Source: nadfun-contract-v2 INadFunRouter.
 export const NAD_FUN_ROUTER_ABI = parseAbi([
-  "function buyWithNative((address token,uint256 amountOutMin,address to,uint256 deadline)) payable returns (uint256)",
-  "function sell((address token,uint256 amountIn,uint256 amountOutMin,address to,uint256 deadline)) returns (uint256)",
-  "function sellToNative((address token,uint256 amountIn,uint256 amountOutMin,address to,uint256 deadline)) returns (uint256)",
+  "function buyWithNative((uint256 amountOutMin,address token,address to,uint256 deadline)) payable returns (uint256)",
+  "function sell((uint256 amountIn,uint256 amountOutMin,address token,address to,uint256 deadline)) returns (uint256)",
+  "function sellToNative((uint256 amountIn,uint256 amountOutMin,address token,address to,uint256 deadline)) returns (uint256)",
   "function getAmountOut(address token,uint256 amountIn,bool isBuy) view returns (uint256)",
   "function getAmountIn(address token,uint256 amountOut,bool isBuy) view returns (uint256)",
   "function isGraduated(address token) view returns (bool)",

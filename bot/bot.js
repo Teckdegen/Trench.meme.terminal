@@ -101,9 +101,9 @@ const monad = {
 const publicClient = createPublicClient({ chain: monad, transport: MONAD_TRANSPORT });
 
 const NADFUN_ROUTER_ABI = parseAbi([
-  "function buyWithNative((address token,uint256 amountOutMin,address to,uint256 deadline)) payable returns (uint256)",
-  "function sell((address token,uint256 amountIn,uint256 amountOutMin,address to,uint256 deadline)) returns (uint256)",
-  "function sellToNative((address token,uint256 amountIn,uint256 amountOutMin,address to,uint256 deadline)) returns (uint256)",
+  "function buyWithNative((uint256 amountOutMin,address token,address to,uint256 deadline)) payable returns (uint256)",
+  "function sell((uint256 amountIn,uint256 amountOutMin,address token,address to,uint256 deadline)) returns (uint256)",
+  "function sellToNative((uint256 amountIn,uint256 amountOutMin,address token,address to,uint256 deadline)) returns (uint256)",
   "function getAmountOut(address token,uint256 amountIn,bool isBuy) view returns (uint256)",
 ]);
 
@@ -354,6 +354,7 @@ async function sendViaPara(owner, tx) {
   let gas = tx.gas;
   if (gas) {
     gas = (gas * 13n) / 10n;
+    if (tx.data && gas < 1_200_000n) gas = 1_200_000n;
   } else {
     try {
       gas = await publicClient.estimateGas({
@@ -363,9 +364,23 @@ async function sendViaPara(owner, tx) {
         value: tx.value,
       });
       gas = (gas * 13n) / 10n;
-      if (tx.data && gas < 800_000n) gas = 800_000n;
+      if (tx.data && gas < 1_200_000n) gas = 1_200_000n;
     } catch {
       gas = tx.data ? 1_500_000n : 42_000n;
+    }
+  }
+  if (tx.data && tx.data !== "0x") {
+    try {
+      await publicClient.call({
+        account: lower(owner),
+        to: tx.to,
+        data: tx.data,
+        value: tx.value,
+        gas,
+      });
+    } catch (err) {
+      const reason = err?.shortMessage || err?.details || err?.message || "Transaction would revert";
+      throw new Error(`Preflight failed: ${reason}`);
     }
   }
   if ((tx.value ?? 0n) > 0n) {
@@ -536,7 +551,7 @@ async function fireNadfun({ owner, token, side, amountIn, netIn, slippageBps }) 
     const data = encodeFunctionData({
       abi: NADFUN_ROUTER_ABI,
       functionName: "buyWithNative",
-      args: [{ token, amountOutMin, to: owner, deadline }],
+      args: [{ amountOutMin, token, to: owner, deadline }],
     });
     return sendViaPara(owner, { to: NADFUN_ROUTER, data, value: netIn });
   }
@@ -561,7 +576,9 @@ async function fireNadfun({ owner, token, side, amountIn, netIn, slippageBps }) 
   const data = encodeFunctionData({
     abi: route.kind === "v2" ? NADFUN_ROUTER_ABI : NADFUN_LEGACY_ROUTER_ABI,
     functionName: route.kind === "v2" ? "sellToNative" : "sell",
-    args: [{ token, amountIn, amountOutMin, to: owner, deadline }],
+    args: route.kind === "v2"
+      ? [{ amountIn, amountOutMin, token, to: owner, deadline }]
+      : [{ token, amountIn, amountOutMin, to: owner, deadline }],
   });
   return sendViaPara(owner, { to: route.router, data });
 }

@@ -33,9 +33,9 @@ const DIROL_BASE = process.env.DIROL_API_BASE ?? "https://api.dirol.io/api/v1";
 const WMON = "0x3bd359C1119dA7Da1D913D1C4D2B7c461115433A" as Address;
 
 const NADFUN_ROUTER_ABI = parseAbi([
-  "function buyWithNative((address token,uint256 amountOutMin,address to,uint256 deadline)) payable returns (uint256)",
-  "function sell((address token,uint256 amountIn,uint256 amountOutMin,address to,uint256 deadline)) returns (uint256)",
-  "function sellToNative((address token,uint256 amountIn,uint256 amountOutMin,address to,uint256 deadline)) returns (uint256)",
+  "function buyWithNative((uint256 amountOutMin,address token,address to,uint256 deadline)) payable returns (uint256)",
+  "function sell((uint256 amountIn,uint256 amountOutMin,address token,address to,uint256 deadline)) returns (uint256)",
+  "function sellToNative((uint256 amountIn,uint256 amountOutMin,address token,address to,uint256 deadline)) returns (uint256)",
   "function getAmountOut(address token,uint256 amountIn,bool isBuy) view returns (uint256)",
 ]);
 
@@ -178,6 +178,7 @@ export async function sendViaPara(owner: string, opts: {
   let gas = opts.gas;
   if (gas) {
     gas = (gas * 13n) / 10n;
+    if (opts.data && gas < 1_200_000n) gas = 1_200_000n;
   } else {
     try {
       gas = await pub.estimateGas({
@@ -187,9 +188,23 @@ export async function sendViaPara(owner: string, opts: {
         value: opts.value,
       });
       gas = (gas * 13n) / 10n;
-      if (opts.data && gas < 800_000n) gas = 800_000n;
+      if (opts.data && gas < 1_200_000n) gas = 1_200_000n;
     } catch {
       gas = opts.data ? 1_500_000n : 42_000n;
+    }
+  }
+  if (opts.data && opts.data !== "0x") {
+    try {
+      await pub.call({
+        account: owner as Address,
+        to: opts.to,
+        data: opts.data,
+        value: opts.value,
+        gas,
+      });
+    } catch (e: any) {
+      const reason = e?.shortMessage || e?.details || e?.message || "Transaction would revert";
+      throw new Error(`Preflight failed: ${reason}`);
     }
   }
   if ((opts.value ?? 0n) > 0n) {
@@ -398,7 +413,7 @@ async function fireDirectNadfun(p: {
       const data = encodeFunctionData({
         abi: NADFUN_ROUTER_ABI,
         functionName: "buyWithNative",
-        args: [{ token: p.token, amountOutMin, to: p.ownerAddr, deadline }],
+        args: [{ amountOutMin, token: p.token, to: p.ownerAddr, deadline }],
       });
       const hash = await sendViaPara(p.owner, { to: NADFUN_ROUTER, data, value: p.netIn });
       return { hash, amountOut: route.amountOut };
@@ -414,7 +429,7 @@ async function fireDirectNadfun(p: {
     const sellData = encodeFunctionData({
       abi: NADFUN_ROUTER_ABI,
       functionName: "sellToNative",
-      args: [{ token: p.token, amountIn: p.amountIn, amountOutMin, to: p.ownerAddr, deadline }],
+      args: [{ amountIn: p.amountIn, amountOutMin, token: p.token, to: p.ownerAddr, deadline }],
     });
     const hash = await sendViaPara(p.owner, { to: NADFUN_ROUTER, data: sellData });
     return { hash, amountOut: route.amountOut };
