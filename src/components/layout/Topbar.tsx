@@ -389,8 +389,8 @@ function WithdrawView({ onBack, onClose }: { onBack: () => void; onClose: () => 
 function DepositView({ onBack, onClose }: { onBack: () => void; onClose: () => void }) {
   const me = useMe();
   const [copied, setCopied] = useState(false);
-  // The deposit address IS the connected Para wallet — funds sent here land
-  // straight in the user's embedded wallet.
+  // The deposit address is the Para API execution wallet used by server-side
+  // REST signing.
   const address = me ?? "";
   const copy = () => {
     if (!address) return;

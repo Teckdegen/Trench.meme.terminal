@@ -64,7 +64,7 @@ export default defineConfig(({ isSsrBuild }) => ({
       "@getpara/cosmos-wallet-connectors": paraExternalWalletStub,
       "@getpara/evm-wallet-connectors": paraExternalWalletStub,
       "@getpara/solana-wallet-connectors": paraExternalWalletStub,
-      ...(!isSsrBuild ? { events: "events/" } : {}),
+      ...(!isSsrBuild ? { buffer: "buffer/", events: "events/" } : {}),
     },
   },
 }));

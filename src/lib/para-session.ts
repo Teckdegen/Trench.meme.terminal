@@ -24,6 +24,81 @@ const monadChain = {
   rpcUrls: { default: { http: [RPC] } },
 } as const;
 
+type ParaApiWallet = {
+  id: string;
+  address?: string;
+  status?: string;
+};
+
+function paraRestCreds() {
+  const apiKey = (process.env.PARA_API_SECRET || process.env.PARA_REST_API_KEY || process.env.PARA_API_KEY || "").trim();
+  if (!apiKey) throw new Error("Para REST API is not configured: set PARA_API_SECRET.");
+  const baseUrl = (process.env.PARA_API_BASE || "https://api.getpara.com").replace(/\/$/, "");
+  return { apiKey, baseUrl };
+}
+
+async function paraRest<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const { apiKey, baseUrl } = paraRestCreds();
+  const headers = new Headers(init.headers);
+  headers.set("content-type", "application/json");
+  headers.set("X-API-Key", apiKey);
+  const res = await fetch(`${baseUrl}${path}`, {
+    ...init,
+    headers,
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const message = json?.message || json?.error || `Para REST request failed (${res.status})`;
+    const code = json?.code ? `${json.code}: ` : "";
+    const err = new Error(`${code}${message}`) as Error & { code?: string; walletId?: string };
+    err.code = json?.code;
+    err.walletId = json?.walletId;
+    throw err;
+  }
+  return json as T;
+}
+
+function apiWalletIdentifier(data: { owner: string; paraUserId?: string | null }) {
+  const stableId = data.paraUserId?.trim();
+  return stableId ? `para:${stableId}` : data.owner.toLowerCase();
+}
+
+async function ensureParaApiWallet(data: { owner: string; paraUserId?: string | null }) {
+  const userIdentifier = apiWalletIdentifier(data);
+  const query = new URLSearchParams({
+    type: "EVM",
+    status: "ready",
+    userIdentifier,
+    userIdentifierType: "CUSTOM_ID",
+    limit: "10",
+  });
+  const list = await paraRest<{ data?: ParaApiWallet[] }>(`/v1/wallets?${query}`);
+  const existing = list.data?.find((wallet) => wallet.id && wallet.address);
+  if (existing?.address) return existing;
+
+  let wallet: ParaApiWallet | undefined;
+  try {
+    wallet = await paraRest<ParaApiWallet>("/v1/wallets", {
+      method: "POST",
+      headers: { "Idempotency-Key": crypto.randomUUID() },
+      body: JSON.stringify({
+        type: "EVM",
+        userIdentifier,
+        userIdentifierType: "CUSTOM_ID",
+        scheme: "DKLS",
+      }),
+    });
+  } catch (e: any) {
+    if (e?.walletId) wallet = await paraRest<ParaApiWallet>(`/v1/wallets/${encodeURIComponent(e.walletId)}`);
+    else throw e;
+  }
+
+  if (!wallet?.id || !wallet.address) {
+    throw new Error("Para API wallet is still creating. Try again in a moment.");
+  }
+  return wallet;
+}
+
 export const registerParaWallet = createServerFn({ method: "POST" })
   .inputValidator((d: {
     owner: string;
@@ -34,12 +109,13 @@ export const registerParaWallet = createServerFn({ method: "POST" })
   }) => d)
   .handler(async ({ data }) => {
     const admin = supabaseAdmin();
-    const addr = data.owner.toLowerCase();
+    const wallet = await ensureParaApiWallet(data);
+    const addr = wallet.address!.toLowerCase();
 
     await admin.from("para_wallets").upsert({
       owner_address: addr,
       para_user_id: data.paraUserId ?? null,
-      wallet_id: data.walletId,
+      wallet_id: wallet.id,
       session: data.session ?? null,
       session_cookie: data.sessionCookie ?? null,
       expires_at: new Date(Date.now() + 7 * 86_400_000).toISOString(),
@@ -54,7 +130,7 @@ export const registerParaWallet = createServerFn({ method: "POST" })
       image_uri: "https://www.image2url.com/r2/default/images/1779999303234-5b9fa706-14c0-4309-af0f-f5f17112bb1c.jpg",
     }, { onConflict: "address", ignoreDuplicates: true });
 
-    return { ok: true };
+    return { ok: true, owner: addr, walletId: wallet.id };
   });
 
 export const executeServerSwap = createServerFn({ method: "POST" })

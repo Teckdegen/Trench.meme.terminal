@@ -130,8 +130,7 @@ function ParaSync({ hooks }: { hooks: any }) {
       return;
     }
     const addr = account?.isConnected ? address?.toLowerCase() : undefined;
-    if (addr && addr !== me) setMe(addr);
-    else if (addr && addr === me) setMe(addr);
+    if (addr && !me) setMe(addr);
     else if (!account?.isLoading && !account?.isConnected && me) setMe(undefined);
   }, [account?.isConnected, account?.isLoading, address, me]);
 
