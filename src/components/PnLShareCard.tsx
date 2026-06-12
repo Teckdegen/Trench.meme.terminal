@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { Camera, Download, Share2, Twitter, X } from "lucide-react";
 import { toPng } from "html-to-image";
-import { APP_NAME, APP_TROOPER } from "@/lib/brand";
+import { APP_NAME } from "@/lib/brand";
 
 type Props = {
   open: boolean;
@@ -9,15 +9,27 @@ type Props = {
   symbol: string;
   tokenImage?: string | null;
   side?: "Long" | "Short" | "Buy" | "Sell";
+  /** The trader's profile picture — shown in the avatar circle. */
+  pfp?: string | null;
   pnlUsd?: number;
   pnlPct?: number;
   multiplier?: number;
   entry?: string;
   exit?: string;
+  /** Total USD put into the position (cost basis of what was sold). */
+  investedUsd?: number;
+  /** Total USD realized on the way out (proceeds of the sell). */
+  soldUsd?: number;
   holdingTime?: string;
   handle?: string;
   address?: string;
 };
+
+const fmtUsd = (n: number) =>
+  `$${Math.abs(n).toLocaleString("en-US", {
+    maximumFractionDigits: Math.abs(n) >= 1000 ? 0 : 2,
+    minimumFractionDigits: Math.abs(n) >= 1000 ? 0 : 2,
+  })}`;
 
 export function PnLShareCard(p: Props) {
   const ref = useRef<HTMLDivElement>(null);
@@ -80,121 +92,119 @@ export function PnLShareCard(p: Props) {
           ref={ref}
           className="relative overflow-hidden"
           style={{
-            aspectRatio: "2.72 / 1",
-            borderRadius: 34,
-            background: "linear-gradient(105deg, #030006 0%, #05000a 58%, #17002c 100%)",
-            border: "3px solid #7c3aed",
-            boxShadow: "0 0 0 1px rgba(216,180,254,0.55) inset, 0 0 50px rgba(124,58,237,0.62)",
+            aspectRatio: "1.91 / 1",
+            borderRadius: 28,
+            background: "linear-gradient(118deg, #07010d 0%, #0a0214 52%, #1c0533 100%)",
+            border: "2px solid #7c3aed",
+            boxShadow: "0 0 0 1px rgba(216,180,254,0.35) inset, 0 0 44px rgba(124,58,237,0.5)",
           }}
         >
+          {/* Ambient glows — one behind the trooper, one behind the % */}
           <div
             className="absolute inset-0 pointer-events-none"
             style={{
               background:
-                "radial-gradient(circle at 74% 50%, rgba(168,85,247,0.52), transparent 28%), radial-gradient(circle at 92% 52%, rgba(88,28,135,0.56), transparent 38%)",
+                "radial-gradient(circle at 84% 78%, rgba(168,85,247,0.4), transparent 34%), radial-gradient(circle at 12% 18%, rgba(88,28,135,0.45), transparent 42%)",
             }}
           />
 
-          <div
-            className="absolute overflow-hidden"
-            style={{
-              left: "4.5%",
-              top: "14%",
-              width: "70%",
-              height: "72%",
-              borderRadius: 10,
-              border: "1px solid rgba(216,180,254,0.82)",
-              background: "linear-gradient(90deg, #000 0%, #020004 72%, rgba(88,28,135,0.22) 100%)",
-              boxShadow: "0 0 24px rgba(168,85,247,0.24) inset",
-            }}
-          >
-            <img
-              src={APP_TROOPER}
-              alt="trench"
-              crossOrigin="anonymous"
-              className="absolute"
-              style={{
-                left: "4%",
-                bottom: "6%",
-                height: "86%",
-                width: "34%",
-                objectFit: "contain",
-                objectPosition: "left bottom",
-                imageRendering: "pixelated" as any,
-              }}
-            />
-
-            <div
-              className="absolute left-0 right-0 text-center text-white/45 font-semibold tracking-tight"
-              style={{ bottom: "-1px", fontSize: 18, textShadow: "0 2px 8px #000" }}
-            >
-              {APP_NAME}
+          {/* Content */}
+          <div className="absolute inset-0 flex flex-col" style={{ padding: "5% 5.5%" }}>
+            {/* Header: pair on the left, brand on the right */}
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-2.5">
+                {(p.pfp ?? p.tokenImage) ? (
+                  <img
+                    src={(p.pfp ?? p.tokenImage)!}
+                    alt={p.handle ?? p.symbol}
+                    crossOrigin="anonymous"
+                    className="size-10 rounded-full object-cover ring-2 ring-white/20"
+                  />
+                ) : (
+                  <div className="size-10 rounded-full grid place-items-center bg-[#d4537e] ring-2 ring-white/20 text-[12px] font-black text-white">
+                    {(p.handle ?? p.symbol).slice(0, 3).toUpperCase()}
+                  </div>
+                )}
+                <div>
+                  <p className="text-[24px] sm:text-[28px] font-black tracking-tight text-white leading-none">
+                    {p.symbol}<span className="text-white/40">/MON</span>
+                  </p>
+                  {p.side && (
+                    <p className="text-[10px] uppercase tracking-[0.22em] text-white/40 mt-1.5">
+                      {p.side === "Sell" ? "Position closed" : p.side}
+                    </p>
+                  )}
+                </div>
+              </div>
+              <span className="text-[15px] font-bold tracking-tight text-white/55">
+                {APP_NAME}
+              </span>
             </div>
-          </div>
 
-          <div className="absolute right-[5%] top-[13%] flex items-center gap-2">
-            <span className="text-[32px] sm:text-[40px] font-black tracking-tight text-white leading-none">
-              ${p.symbol}
-            </span>
-            {p.tokenImage && (
-              <img
-                src={p.tokenImage}
-                alt={p.symbol}
-                crossOrigin="anonymous"
-                className="size-9 rounded-full object-cover ring-2 ring-white/25"
-              />
-            )}
-          </div>
-
-          <div className="absolute right-[5%] text-right" style={{ top: "38%" }}>
-            <p
-              className="font-black tracking-tight leading-none"
-              style={{
-                fontSize: "clamp(72px, 12vw, 122px)",
-                color: up ? "#4ade80" : "#f87171",
-                textShadow: up
-                  ? "0 0 30px rgba(74,222,128,0.48)"
-                  : "0 0 30px rgba(248,113,113,0.48)",
-              }}
-            >
-              {up ? "+" : ""}{headline.replace(/^\+/, "")}
-            </p>
-
-            {p.pnlUsd != null && (
-              <p className={`mt-1 text-lg font-black ${up ? "text-up" : "text-down"}`}>
-                {up ? "+" : "-"}${Math.abs(p.pnlUsd).toLocaleString("en-US", { maximumFractionDigits: 0 })}
+            {/* Headline % + realized PnL */}
+            <div className="mt-3">
+              <p
+                className="font-black tracking-tight leading-none"
+                style={{
+                  fontSize: "clamp(44px, 7.5vw, 64px)",
+                  color: up ? "#4ade80" : "#f87171",
+                  textShadow: up
+                    ? "0 0 26px rgba(74,222,128,0.42)"
+                    : "0 0 26px rgba(248,113,113,0.42)",
+                }}
+              >
+                {up ? "+" : ""}{headline.replace(/^\+/, "")}
               </p>
-            )}
+              <div className="flex items-center gap-3 mt-2">
+                {p.pnlUsd != null && (
+                  <span className={`text-[19px] font-black ${up ? "text-up" : "text-down"}`}>
+                    {up ? "+" : "-"}{fmtUsd(p.pnlUsd)}
+                  </span>
+                )}
+                {p.holdingTime && (
+                  <span className="text-[12px] text-white/50">
+                    held {p.holdingTime}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Stats — invested vs what came out */}
+            <div className="mt-auto flex items-end gap-7">
+              {p.investedUsd != null && (
+                <div>
+                  <p className="text-[10px] uppercase tracking-[0.18em] text-white/45 whitespace-nowrap">Invested</p>
+                  <p className="text-[19px] font-black font-mono text-white mt-0.5">{fmtUsd(p.investedUsd)}</p>
+                </div>
+              )}
+              {p.soldUsd != null && (
+                <div>
+                  <p className="text-[10px] uppercase tracking-[0.18em] text-white/45 whitespace-nowrap">Sold for</p>
+                  <p className="text-[19px] font-black font-mono text-white mt-0.5">{fmtUsd(p.soldUsd)}</p>
+                </div>
+              )}
+              {p.investedUsd == null && p.soldUsd == null && p.entry && (
+                <div>
+                  <p className="text-[10px] uppercase tracking-[0.18em] text-white/45">Entry</p>
+                  <p className="text-[19px] font-black font-mono text-white mt-0.5">{p.entry}</p>
+                </div>
+              )}
+              {p.investedUsd == null && p.soldUsd == null && p.exit && (
+                <div>
+                  <p className="text-[10px] uppercase tracking-[0.18em] text-white/45">Exit</p>
+                  <p className="text-[19px] font-black font-mono text-white mt-0.5">{p.exit}</p>
+                </div>
+              )}
+              <div className="ml-auto text-right">
+                {(p.handle || p.address) && (
+                  <p className="text-[11px] text-white/45 font-mono">
+                    {p.handle ? `@${p.handle}` : `${p.address!.slice(0, 6)}…${p.address!.slice(-4)}`}
+                  </p>
+                )}
+                <p className="text-[10px] text-white/30 mt-0.5">{APP_NAME}</p>
+              </div>
+            </div>
           </div>
-
-          {(p.entry || p.exit || p.holdingTime) && (
-            <div className="absolute right-[5.5%] text-[11px] text-white/70 space-y-0.5 text-right" style={{ bottom: 30 }}>
-              {p.entry && (
-                <div>
-                  <span className="text-white/50">Entry </span>
-                  <span className="font-mono text-white">{p.entry}</span>
-                </div>
-              )}
-              {p.exit && (
-                <div>
-                  <span className="text-white/50">Exit </span>
-                  <span className="font-mono text-white">{p.exit}</span>
-                </div>
-              )}
-              {p.holdingTime && (
-                <div>
-                  <span className="text-white/50">Held </span>
-                  <span className="text-white">{p.holdingTime}</span>
-                </div>
-              )}
-            </div>
-          )}
-
-          {(p.handle || p.address) && (
-            <div className="absolute bottom-3 left-5 text-[9px] text-white/40 font-mono">
-              {p.handle ? `@${p.handle}` : p.address}
-            </div>
-          )}
         </div>
 
         <div className="grid grid-cols-3 gap-3 mt-4">

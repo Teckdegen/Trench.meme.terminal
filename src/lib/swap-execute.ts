@@ -117,7 +117,7 @@ export function useSwapExecute() {
       // auto-pop the PnL share card. On a BUY there's no realized PnL yet,
       // so skip (user can still hit Share from their position later).
       if (p.side === "sell") {
-        showPnLForSell(p).catch(() => {});
+        showPnLForSell(p, h).catch(() => {});
       }
       return h;
     } catch (e: any) {
@@ -150,45 +150,111 @@ export function useSwapExecute() {
   return { run, pending, hash, error };
 }
 
-// Look up the user's position to compute realized PnL on this sell, then
-// pop the PnL share card. Best-effort — silently no-ops if Supabase isn't
-// wired or there's no position row yet.
-async function showPnLForSell(p: ExecParams) {
+// Build the PnL share card from REAL recorded trades, not price snapshots:
+//   - "Sold for"  = the actual USD value of this sell tx (the server records
+//     every swap in `trades` with the MON received × live MON/USD price)
+//   - "Invested"  = average cost basis of the sold tokens, replayed from the
+//     user's full buy/sell history of this token
+//   - "Held"      = time since the position was opened (the last time the
+//     balance went from zero to holding — not the first buy ever)
+// Best-effort — silently degrades if Supabase isn't wired or history is thin.
+async function showPnLForSell(p: ExecParams, txHash: Hex) {
   try {
     const me = p.recipient.toLowerCase();
     const tok = p.tokenAddress.toLowerCase();
     const sb = supabase();
-    // Pull cost basis + symbol/image
-    const [{ data: pos }, { data: tokRow }, { data: mkt }] = await Promise.all([
-      sb.from("position_snapshots").select("avg_cost_usd, realized_usd, balance")
-        .eq("account_address", me).eq("token_address", tok).maybeSingle(),
+
+    const [{ data: tokRow }, { data: mkt }, { data: acct }] = await Promise.all([
       sb.from("tokens").select("symbol, image_uri").eq("address", tok).maybeSingle(),
       sb.from("token_markets").select("price_usd").eq("token_address", tok).maybeSingle(),
+      sb.from("accounts").select("handle, image_uri").eq("address", me).maybeSingle(),
     ]);
     const symbol = (tokRow as any)?.symbol ?? p.symbol ?? "???";
     const image  = (tokRow as any)?.image_uri ?? null;
-    const avgCost = Number((pos as any)?.avg_cost_usd ?? 0);
-    const exitPrice = Number((mkt as any)?.price_usd ?? 0);
-    const soldTokens = Number(p.rawAmount) / 1e18;
+    const pfp    = (acct as any)?.image_uri ?? null;
+    // Fresh accounts default their handle to the raw wallet address — show
+    // the truncated address instead of "@0x49ab8a25…" in that case.
+    const rawHandle = (acct as any)?.handle as string | undefined;
+    const handle = rawHandle && !/^0x[a-fA-F0-9]{40}$/.test(rawHandle) ? rawHandle : undefined;
 
-    if (!avgCost || !exitPrice || !soldTokens) {
-      // Not enough data to compute PnL — show the card with no headline
-      autoShowPnLCard({ symbol, tokenImage: image, side: "Sell" });
+    // The server writes the sell into `trades` before the swap fn returns,
+    // but give it a few retries in case the row lands a moment later.
+    let sell: { token_amount: string; value_usd: number | null } | null = null;
+    for (let i = 0; i < 6 && !sell; i += 1) {
+      const { data } = await sb.from("trades")
+        .select("token_amount, value_usd")
+        .eq("tx_hash", txHash).maybeSingle();
+      if (data) sell = data as any;
+      else await sleep(1_500);
+    }
+
+    // Replay the full trade history (oldest first) to get the average cost
+    // basis and the timestamp the current position was opened.
+    const { data: hist } = await sb.from("trades")
+      .select("tx_hash, side, token_amount, value_usd, created_at_chain")
+      .eq("account_address", me).eq("token_address", tok)
+      .order("created_at_chain", { ascending: true })
+      .limit(1000);
+
+    let bal = 0;                       // tokens held
+    let costUsd = 0;                   // USD paid for those tokens
+    let openedAt: number | null = null;
+    for (const t of (hist ?? []) as any[]) {
+      if (t.tx_hash === txHash) continue;     // state as-of just before this sell
+      const qty = Number(t.token_amount) / 1e18;
+      const usd = Number(t.value_usd ?? 0);
+      if (!isFinite(qty) || qty <= 0) continue;
+      if (t.side === "BUY") {
+        if (bal <= 1e-9) openedAt = +new Date(t.created_at_chain);
+        bal += qty;
+        costUsd += usd;
+      } else {
+        const sellQty = Math.min(qty, bal);
+        if (bal > 0) costUsd -= costUsd * (sellQty / bal);  // avg-cost reduction
+        bal -= sellQty;
+        if (bal <= 1e-9) { bal = 0; costUsd = 0; openedAt = null; }
+      }
+    }
+
+    // Actual amounts for THIS sell — prefer the recorded tx over UI floats.
+    const exitPrice = Number((mkt as any)?.price_usd ?? 0);
+    const soldTokens = sell ? Number(sell.token_amount) / 1e18 : Number(p.rawAmount) / 1e18;
+    const proceeds = sell?.value_usd != null && Number(sell.value_usd) > 0
+      ? Number(sell.value_usd)
+      : exitPrice > 0 ? exitPrice * soldTokens : 0;
+    const avgCost = bal > 0 ? costUsd / bal : 0;
+    const invested = avgCost * Math.min(soldTokens, bal > 0 ? bal : soldTokens);
+
+    if (!(invested > 0) || !(proceeds > 0)) {
+      // Not enough history for PnL — still show what they walked out with.
+      autoShowPnLCard({
+        symbol, tokenImage: image, side: "Sell",
+        pfp, handle, address: me,
+        soldUsd: proceeds > 0 ? proceeds : undefined,
+      });
       return;
     }
 
-    const cost = avgCost * soldTokens;
-    const proceeds = exitPrice * soldTokens;
-    const pnlUsd = proceeds - cost;
-    const pnlPct = cost > 0 ? (pnlUsd / cost) * 100 : 0;
-    const multiplier = avgCost > 0 ? exitPrice / avgCost : 0;
+    const pnlUsd = proceeds - invested;
+    const pnlPct = (pnlUsd / invested) * 100;
+    const multiplier = proceeds / invested;
+
+    let holdingTime: string | undefined;
+    if (openedAt && openedAt < Date.now()) {
+      let mins = Math.floor((Date.now() - openedAt) / 60_000);
+      const d = Math.floor(mins / 1440); mins -= d * 1440;
+      const h = Math.floor(mins / 60); const m = mins - h * 60;
+      holdingTime = d > 0 ? `${d}d ${h}h ${m}m` : h > 0 ? `${h}h ${m}m` : `${m}m`;
+    }
 
     autoShowPnLCard({
       symbol, tokenImage: image, side: "Sell",
+      pfp, handle, address: me,
       pnlUsd, pnlPct,
       multiplier: multiplier >= 2 ? multiplier : undefined,
-      entry: `$${avgCost.toPrecision(3)}`,
-      exit:  `$${exitPrice.toPrecision(3)}`,
+      investedUsd: invested,
+      soldUsd: proceeds,
+      holdingTime,
     });
   } catch {
     /* silent — share card is a nice-to-have */
