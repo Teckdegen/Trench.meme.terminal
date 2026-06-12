@@ -53,9 +53,8 @@ export function useMonBalance(me: string | undefined) {
 
 // ─────────────── Single-token balance (for the token page) ──────────
 // Used by /token/$id where we only care about ONE token, not the full
-// holdings list. Polls every 15s and exposes raw + human-readable +
-// decimals so the trade panel can render and a "Max" button can fill the
-// input precisely.
+// holdings list. Token balances prefer Zerion's portfolio indexer; native
+// MON still comes from the wallet RPC balance above.
 export function useTokenBalance(me: string | undefined, token: string | undefined) {
   const [raw, setRaw] = useState<bigint>(0n);
   const [decimals, setDecimals] = useState<number>(18);
@@ -68,6 +67,21 @@ export function useTokenBalance(me: string | undefined, token: string | undefine
     }
     setLoading(true);
     try {
+      const tokenLc = token.toLowerCase();
+      const { fetchZerionPositions } = await import("@/lib/zerion");
+      const { positions, source } = await fetchZerionPositions({ data: { address: me } });
+      if (source === "zerion") {
+        const pos = positions.find((p) => p.address.toLowerCase() === tokenLc);
+        if (pos) {
+          setRaw(BigInt(pos.balanceRaw || "0"));
+          setDecimals(Number(pos.decimals || 18));
+          return;
+        }
+        setRaw(0n);
+        setDecimals(18);
+        return;
+      }
+
       const [b, d] = await Promise.all([
         publicClient.readContract({
           address: token as Address, abi: ERC20, functionName: "balanceOf",
