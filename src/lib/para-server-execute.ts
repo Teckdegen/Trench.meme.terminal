@@ -50,6 +50,8 @@ const NADFUN_LEGACY_ROUTER_ABI = parseAbi([
 
 const ERC20_ABI = parseAbi([
   "function approve(address spender,uint256 amount) returns (bool)",
+  "function balanceOf(address owner) view returns (uint256)",
+  "function withdraw(uint256 amount)",
 ]);
 
 type FiredSwap = {
@@ -352,6 +354,22 @@ async function fireDirol(p: {
   return { hash, amountOut: BigInt(swap.amountOut || "0") };
 }
 
+async function unwrapWmonBalance(pub: any, owner: string, ownerAddr: Address) {
+  const balance = await pub.readContract({
+    address: WMON,
+    abi: ERC20_ABI,
+    functionName: "balanceOf",
+    args: [ownerAddr],
+  }).catch(() => 0n);
+  if (balance <= 0n) return null;
+  const data = encodeFunctionData({
+    abi: ERC20_ABI,
+    functionName: "withdraw",
+    args: [balance],
+  });
+  return sendViaPara(owner, { to: WMON, data });
+}
+
 async function fireDirectNadfun(p: {
   pub: any;
   owner: string;
@@ -432,11 +450,12 @@ async function recordLocalTrade(p: {
   try {
     const sb = admin();
     const meta = await nadfunTokenMeta(p.token).catch(() => null);
-    await sb.from("tokens").upsert({
+    const tokenWrite = await sb.from("tokens").upsert({
       address: p.token.toLowerCase(),
       symbol: p.token.slice(2, 8).toUpperCase(),
       name: meta?.version ? `Nad.fun ${meta.version}` : `Token ${p.token.slice(2, 8).toUpperCase()}`,
     }, { onConflict: "address", ignoreDuplicates: true });
+    if (tokenWrite.error) throw tokenWrite.error;
 
     const receipt = await p.pub.getTransactionReceipt({ hash: p.hash });
     const block = await p.pub.getBlock({ blockNumber: receipt.blockNumber });
@@ -447,7 +466,7 @@ async function recordLocalTrade(p: {
     const tokenQty = Number(tokenAmount) / 1e18;
     const priceUsd = valueUsd != null && tokenQty > 0 ? valueUsd / tokenQty : null;
 
-    await sb.from("trades").upsert({
+    const tradeWrite = await sb.from("trades").upsert({
       tx_hash: p.hash,
       token_address: p.token.toLowerCase(),
       account_address: p.owner.toLowerCase(),
@@ -461,6 +480,7 @@ async function recordLocalTrade(p: {
       log_index: 0,
       created_at_chain: new Date(Number(block.timestamp) * 1000).toISOString(),
     }, { onConflict: "tx_hash" });
+    if (tradeWrite.error) throw tradeWrite.error;
 
     await Promise.allSettled(["24H", "7D", "30D", "ALL"].map((w) =>
       sb.rpc("compute_pnl_snapshots", { p_window: w }),
@@ -501,6 +521,7 @@ export async function fireWithPara(p: {
   }
 
   let fired: FiredSwap;
+  let usedDirol = false;
   const token = p.tokenAddress as Address;
   const preferDirectNadfun = p.venue === "nadfun";
 
@@ -527,6 +548,7 @@ export async function fireWithPara(p: {
         isBuy,
         slippageBps: p.slippageBps,
       });
+      usedDirol = true;
     } catch (e) {
       const meta = await nadfunTokenMeta(p.tokenAddress);
       if (!meta?.version) throw e;
@@ -545,6 +567,9 @@ export async function fireWithPara(p: {
   }
 
   const hash = fired.hash;
+  if (usedDirol && !isBuy) {
+    await unwrapWmonBalance(pub, p.owner, ownerAddr);
+  }
   await recordLocalTrade({
     pub,
     hash,

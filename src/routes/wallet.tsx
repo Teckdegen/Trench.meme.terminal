@@ -74,15 +74,15 @@ function PortfolioPage() {
       <div className={`grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 ${mTab === "stats" ? "" : "hidden"} md:grid`}>
         <StatTile
           label="ROI"
-          value={pnlLoading ? "…" : `${roi >= 0 ? "+" : ""}${roi.toFixed(2)}%`}
+          value={pnlLoading && !livePnl ? "..." : `${roi >= 0 ? "+" : ""}${roi.toFixed(2)}%`}
           icon={Percent}
           tone={roi >= 0 ? "up" : "down"}
         />
         <StatTile
           label="Realized PnL"
-          value={pnlLoading ? "…" : fmtUsd(Number(snap?.realized_usd ?? 0))}
+          value={pnlLoading && !livePnl ? "..." : fmtUsd(Number(livePnl?.realized ?? snap?.realized_usd ?? 0))}
           icon={TrendingUp}
-          tone={(snap?.realized_usd ?? 0) >= 0 ? "up" : "down"}
+          tone={(livePnl?.realized ?? snap?.realized_usd ?? 0) >= 0 ? "up" : "down"}
         />
         <StatTile
           label="Unrealized"
@@ -92,17 +92,17 @@ function PortfolioPage() {
         />
         <StatTile
           label="Volume"
-          value={pnlLoading ? "…" : fmtUsd(Number(snap?.volume_usd ?? 0))}
+          value={pnlLoading && !livePnl ? "..." : fmtUsd(Number(livePnl?.volume ?? snap?.volume_usd ?? 0))}
           icon={BarChart3}
         />
         <StatTile
           label="Win Rate"
-          value={pnlLoading ? "…" : `${Number(snap?.win_rate_pct ?? 0).toFixed(0)}%`}
+          value={pnlLoading && !livePnl ? "..." : livePnl && livePnl.sells > 0 ? `${((livePnl.wins / livePnl.sells) * 100).toFixed(0)}%` : `${Number(snap?.win_rate_pct ?? 0).toFixed(0)}%`}
           icon={Target}
         />
         <StatTile
           label="Trades"
-          value={pnlLoading ? "…" : String(snap?.trades_count ?? trades.length)}
+          value={pnlLoading && !livePnl ? "..." : String(livePnl?.trades ?? snap?.trades_count ?? trades.length)}
           icon={WalletIcon}
         />
       </div>

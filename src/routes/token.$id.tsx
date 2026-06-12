@@ -395,13 +395,6 @@ function TokenPage() {
               rawAmount={rawAmount}
               expiry={expiry}
             />
-
-            <div className="grid grid-cols-4 gap-2 text-[11px] text-center">
-              <MiniStat label="Bought" value="0" />
-              <MiniStat label="Sold" value="0" />
-              <MiniStat label="Holding" value="0" />
-              <MiniStat label="PnL" value="+0%" good />
-            </div>
           </aside>
         </div>
 
@@ -806,15 +799,6 @@ function TradeAssetChip({
       <TradeAssetIcon side={side} symbol={symbol} imageUri={imageUri} color={color} />
       <span className="text-sm font-bold">{side === "buy" ? "MON" : symbol}</span>
     </span>
-  );
-}
-
-function MiniStat({ label, value, good }: { label: string; value: string; good?: boolean }) {
-  return (
-    <div className="rounded-md bg-surface-2 border border-border p-1.5">
-      <p className="text-[10px] text-muted-foreground">{label}</p>
-      <p className={`text-xs font-semibold ${good ? "text-up" : ""}`}>{value}</p>
-    </div>
   );
 }
 
