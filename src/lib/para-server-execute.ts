@@ -247,6 +247,9 @@ type NadfunTokenMeta = {
   version: "V1" | "V2" | null;
   marketType: string | null;
   isGraduated: boolean | null;
+  symbol: string | null;
+  name: string | null;
+  imageUri: string | null;
 };
 
 async function nadfunTokenMeta(token: string): Promise<NadfunTokenMeta | null> {
@@ -267,6 +270,9 @@ async function nadfunTokenMeta(token: string): Promise<NadfunTokenMeta | null> {
       version: version === "V1" || version === "V2" ? version : null,
       marketType,
       isGraduated,
+      symbol: typeof json?.token_info?.symbol === "string" ? json.token_info.symbol : null,
+      name: typeof json?.token_info?.name === "string" ? json.token_info.name : null,
+      imageUri: typeof json?.token_info?.image_uri === "string" ? json.token_info.image_uri : null,
     };
   } catch {
     return null;
@@ -519,11 +525,13 @@ async function recordLocalTrade(p: {
   try {
     const sb = admin();
     const meta = await nadfunTokenMeta(p.token).catch(() => null);
+    const addrSlug = p.token.slice(2, 8).toUpperCase();
     const tokenWrite = await sb.from("tokens").upsert({
       address: p.token.toLowerCase(),
-      symbol: p.token.slice(2, 8).toUpperCase(),
-      name: meta?.version ? `Nad.fun ${meta.version}` : `Token ${p.token.slice(2, 8).toUpperCase()}`,
-    }, { onConflict: "address", ignoreDuplicates: true });
+      symbol: meta?.symbol || addrSlug,
+      name: meta?.name || `Token ${addrSlug}`,
+      ...(meta?.imageUri ? { image_uri: meta.imageUri } : {}),
+    }, { onConflict: "address", ignoreDuplicates: !meta?.symbol });
     if (tokenWrite.error) throw tokenWrite.error;
 
     const receipt = await p.pub.getTransactionReceipt({ hash: p.hash });

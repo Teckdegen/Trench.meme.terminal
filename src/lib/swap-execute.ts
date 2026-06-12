@@ -169,7 +169,16 @@ async function showPnLForSell(p: ExecParams, txHash: Hex) {
       sb.from("token_markets").select("price_usd").eq("token_address", tok).maybeSingle(),
       sb.from("accounts").select("handle, image_uri").eq("address", me).maybeSingle(),
     ]);
-    const symbol = (tokRow as any)?.symbol ?? p.symbol ?? "???";
+    // Prefer a REAL ticker. Server-recorded rows for unknown tokens use a
+    // placeholder sliced from the contract address (e.g. "86E062") — never
+    // show that if the UI already knows the proper symbol.
+    const addrSlug = tok.slice(2, 8).toUpperCase();
+    const isPlaceholder = (s?: string | null) =>
+      !s || s === "…" || s === "???" || s.toUpperCase() === addrSlug;
+    const dbSymbol = (tokRow as any)?.symbol as string | undefined;
+    const symbol = !isPlaceholder(p.symbol) ? p.symbol!
+      : !isPlaceholder(dbSymbol) ? dbSymbol!
+      : `${tok.slice(0, 6)}…${tok.slice(-4)}`;
     const image  = (tokRow as any)?.image_uri ?? null;
     const pfp    = (acct as any)?.image_uri ?? null;
     // Fresh accounts default their handle to the raw wallet address — show

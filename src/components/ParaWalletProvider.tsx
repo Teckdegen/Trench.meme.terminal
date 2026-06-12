@@ -50,6 +50,35 @@ function ParaInner({ apiKey, children }: { apiKey: string; children: ReactNode }
   const ParaProvider = Mod.ParaProvider;
   const Environment = Mod.Environment;
 
+  // Hard-pinned modal palette — black bg, white text, purple accents ONLY.
+  // Para normally DERIVES surface/muted shades by mixing background toward
+  // the accent color, and the partner-portal theme can override SDK values.
+  // cssOverrides bypasses all of that: these land directly on the modal's
+  // CSS variables, so nothing can recolor the modal into unreadable tones.
+  const PARA_CSS_VARS: Record<string, string> = {
+    "--para-color-background": "#000000",
+    "--para-color-foreground": "#ffffff",
+    "--para-color-popover": "#000000",
+    "--para-color-popover-foreground": "#ffffff",
+    "--para-color-primary": "#a855f7",
+    "--para-color-primary-foreground": "#ffffff",
+    "--para-color-accent": "#a855f7",
+    "--para-color-accent-foreground": "#ffffff",
+    "--para-color-secondary": "#15091f",
+    "--para-color-secondary-foreground": "#ffffff",
+    "--para-color-buttonBg": "#15091f",
+    "--para-color-buttonHoverBg": "#221033",
+    "--para-color-muted": "#120a1a",
+    "--para-color-muted-foreground": "rgba(255,255,255,0.65)",
+    "--para-color-input": "#120a1a",
+    "--para-color-border": "rgba(255,255,255,0.16)",
+    "--para-color-divider": "rgba(255,255,255,0.14)",
+    "--para-color-dividerTextColor": "rgba(255,255,255,0.55)",
+    "--para-color-termsTextColor": "rgba(255,255,255,0.55)",
+    "--para-color-placeholderColor": "rgba(255,255,255,0.45)",
+    "--para-color-ring": "#a855f7",
+  };
+
   return (
     <ParaProvider
       paraClientConfig={{
@@ -79,6 +108,7 @@ function ParaInner({ apiKey, children }: { apiKey: string; children: ReactNode }
           accentColor: "#a855f7",
           borderRadius: "lg",
           foregroundMixRatio: 0.08,
+          cssOverrides: PARA_CSS_VARS,
         },
       }}
       paraModalConfig={{
@@ -95,6 +125,7 @@ function ParaInner({ apiKey, children }: { apiKey: string; children: ReactNode }
           accentColor: "#a855f7",
           borderRadius: "lg",
           foregroundMixRatio: 0.08,
+          cssOverrides: PARA_CSS_VARS,
         },
         recoverySecretStepEnabled: true,
         twoFactorAuthEnabled: false,

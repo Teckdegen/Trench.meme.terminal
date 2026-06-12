@@ -1,7 +1,35 @@
 import { useRef, useState } from "react";
 import { Camera, Download, Share2, Twitter, X } from "lucide-react";
 import { toPng } from "html-to-image";
+import { toast } from "sonner";
 import { APP_NAME } from "@/lib/brand";
+
+// html-to-image must re-fetch every <img> in the card; cross-origin hosts
+// without CORS headers make that fetch throw and kill the export. Swap each
+// remote image for a data URL (fetched through our server proxy) first.
+async function inlineRemoteImages(root: HTMLElement) {
+  const imgs = Array.from(root.querySelectorAll("img"));
+  await Promise.all(imgs.map(async (img) => {
+    const src = img.getAttribute("src") ?? "";
+    if (!/^https?:\/\//i.test(src)) return;               // already inline/data:
+    if (src.startsWith(location.origin)) return;          // same-origin is fine
+    if (img.dataset.inlined === "1") return;
+    try {
+      const { proxyImageAsDataUrl } = await import("@/lib/image-proxy");
+      const { dataUrl } = await proxyImageAsDataUrl({ data: { url: src } });
+      if (dataUrl) {
+        img.src = dataUrl;
+        img.dataset.inlined = "1";
+      } else {
+        // Proxy couldn't fetch it — drop the image rather than failing the
+        // whole capture.
+        img.style.visibility = "hidden";
+      }
+    } catch {
+      img.style.visibility = "hidden";
+    }
+  }));
+}
 
 type Props = {
   open: boolean;
@@ -46,15 +74,33 @@ export function PnLShareCard(p: Props) {
     if (!ref.current) return;
     setBusy(true);
     try {
-      const dataUrl = await toPng(ref.current, {
-        pixelRatio: 2.5,
-        cacheBust: true,
-        backgroundColor: "#030006",
-      });
+      await inlineRemoteImages(ref.current);
+      let dataUrl: string;
+      try {
+        dataUrl = await toPng(ref.current, {
+          pixelRatio: 2.5,
+          cacheBust: true,
+          backgroundColor: "#030006",
+        });
+      } catch {
+        // Some browsers choke on webfont embedding — retry without fonts
+        // rather than failing the download outright.
+        dataUrl = await toPng(ref.current, {
+          pixelRatio: 2.5,
+          cacheBust: true,
+          backgroundColor: "#030006",
+          skipFonts: true,
+        });
+      }
       const a = document.createElement("a");
       a.href = dataUrl;
       a.download = `trench-${p.symbol}-${Date.now()}.png`;
+      document.body.appendChild(a);
       a.click();
+      a.remove();
+    } catch (e) {
+      console.warn("[pnl-card] PNG export failed", e);
+      toast.error("Couldn't save the image — try again.");
     } finally {
       setBusy(false);
     }
