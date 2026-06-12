@@ -205,3 +205,12 @@ export const withdrawMon = createServerFn({ method: "POST" })
       throw new Error(e?.shortMessage ?? e?.message ?? "Withdrawal RPC request failed.");
     }
   });
+
+export const unwrapWmon = createServerFn({ method: "POST" })
+  .inputValidator((d: { owner: string }) => d)
+  .handler(async ({ data }) => {
+    const owner = data.owner.toLowerCase();
+    if (!/^0x[a-fA-F0-9]{40}$/.test(owner)) throw new Error("Invalid connected wallet.");
+    const { unwrapWmonForOwner } = await import("./para-server-execute");
+    return await unwrapWmonForOwner(owner);
+  });

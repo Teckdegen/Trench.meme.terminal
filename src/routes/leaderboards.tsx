@@ -1,4 +1,4 @@
-// Leaderboards — top traders ranked by realized PnL per window.
+// Leaderboards - top traders ranked by realized PnL per window.
 // All data live from Supabase pnl_snapshots (written by the PnL worker).
 
 import { createFileRoute, Link } from "@tanstack/react-router";
@@ -45,7 +45,11 @@ function fmtUsd(n: number) {
 }
 function traderLabel(r: Row) {
   if (r.handle) return `@${r.handle}`;
-  return r.display_name ?? "…";
+  return r.display_name ?? shortAddr(r.account_address);
+}
+
+function shortAddr(a: string) {
+  return `${a.slice(0, 6)}...${a.slice(-4)}`;
 }
 
 function gradFor(s: string) {
@@ -105,13 +109,13 @@ function Leaderboards() {
   }, [range, sortKey]);
 
   const podium = useMemo(() => (rows ?? []).slice(0, 3), [rows]);
-  const rest = useMemo(() => (rows ?? []).slice(3), [rows]);
+  const rest = useMemo(() => rows ?? [], [rows]);
 
   return (
     <div className="space-y-4">
       <PageTitle
         title="Leaderboards"
-        subtitle="Top traders ranked by realized PnL — live from the PnL worker."
+        subtitle="Top traders ranked by realized PnL - live from the PnL worker."
         action={
           <div className="flex p-1 rounded-xl bg-surface-2 text-xs">
             {ranges.map((r) => (
@@ -129,7 +133,7 @@ function Leaderboards() {
         }
       />
 
-      {rows === null && <div className="py-16 text-center text-sm text-muted-foreground">Loading…</div>}
+      {rows === null && <div className="py-16 text-center text-sm text-muted-foreground">Loading...</div>}
 
       {rows && rows.length === 0 && (
         <div className="rounded-2xl bg-surface border border-white/5 p-10 text-center">
@@ -145,12 +149,12 @@ function Leaderboards() {
 
       {rows && rows.length > 0 && (
         <>
-          {/* Podium — top 3 */}
+          {/* Podium - top 3 */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {podium.filter((r) => r.handle).map((r, i) => (
+            {podium.map((r, i) => (
               <Link
                 key={r.account_address}
-                {...profileRoute(r.handle!)}
+                {...profileRoute(r.handle ?? r.account_address)}
                 className={`rounded-2xl bg-surface border p-4 flex items-center gap-3 hover:bg-white/[0.04] ${
                   i === 0 ? "border-yellow-500/40 ring-1 ring-yellow-500/20"
                   : i === 1 ? "border-white/10"
@@ -183,7 +187,7 @@ function Leaderboards() {
                     {r.realized_usd >= 0 ? "+" : ""}{fmtUsd(r.realized_usd)}
                   </p>
                   <p className="text-[11px] text-muted-foreground">
-                    {r.win_rate_pct != null ? `${r.win_rate_pct.toFixed(0)}% WR` : "—"} · {r.trades_count} trades
+                    {r.win_rate_pct != null ? `${r.win_rate_pct.toFixed(0)}% WR` : "-"} - {r.trades_count} trades
                   </p>
                 </div>
               </Link>
@@ -205,11 +209,11 @@ function Leaderboards() {
                   </tr>
                 </thead>
                 <tbody>
-                  {rest.filter((r) => r.handle).map((r, i) => (
+                  {rest.map((r, i) => (
                     <tr key={r.account_address} className="border-b border-white/5 hover:bg-white/[0.02]">
                       <td className="px-3 py-2.5 text-muted-foreground tabular-nums">{i + 4}</td>
                       <td className="px-3 py-2.5">
-                        <Link {...profileRoute(r.handle!)} className="flex items-center gap-2 hover:underline">
+                        <Link {...profileRoute(r.handle ?? r.account_address)} className="flex items-center gap-2 hover:underline">
                           {r.image_uri ? (
                             <img src={r.image_uri} className="size-7 rounded-full object-cover" alt="" />
                           ) : (
@@ -230,7 +234,7 @@ function Leaderboards() {
                       <td className={`px-3 py-2.5 text-right font-semibold ${r.realized_usd >= 0 ? "text-up" : "text-down"}`}>
                         {r.realized_usd >= 0 ? "+" : ""}{fmtUsd(r.realized_usd)}
                       </td>
-                      <td className="px-3 py-2.5 text-right">{r.win_rate_pct != null ? `${r.win_rate_pct.toFixed(0)}%` : "—"}</td>
+                      <td className="px-3 py-2.5 text-right">{r.win_rate_pct != null ? `${r.win_rate_pct.toFixed(0)}%` : "-"}</td>
                       <td className="px-3 py-2.5 text-right">{fmtUsd(r.volume_usd)}</td>
                       <td className="px-3 py-2.5 text-right">{r.trades_count}</td>
                     </tr>
@@ -253,7 +257,7 @@ function Th({ children, align, onClick, active }: {
       onClick={onClick}
       className={`px-3 py-2.5 font-medium select-none ${align === "right" ? "text-right" : "text-left"} ${onClick ? "cursor-pointer hover:text-foreground" : ""} ${active ? "text-foreground" : ""}`}
     >
-      {children}{active && " ▼"}
+      {children}{active && " v"}
     </th>
   );
 }

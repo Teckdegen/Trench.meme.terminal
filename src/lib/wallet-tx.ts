@@ -107,6 +107,43 @@ export function useTokenBalance(me: string | undefined, token: string | undefine
   return { balance, raw, decimals, loading, refresh };
 }
 
+export function useDirectTokenBalance(me: string | undefined, token: string | undefined) {
+  const [raw, setRaw] = useState<bigint>(0n);
+  const [decimals, setDecimals] = useState<number>(18);
+  const [loading, setLoading] = useState(false);
+
+  const refresh = useCallback(async () => {
+    if (!me || !token || !/^0x[a-fA-F0-9]{40}$/.test(token)) {
+      setRaw(0n);
+      return;
+    }
+    setLoading(true);
+    try {
+      const [b, d] = await Promise.all([
+        publicClient.readContract({
+          address: token as Address, abi: ERC20, functionName: "balanceOf",
+          args: [me as Address],
+        }) as Promise<bigint>,
+        publicClient.readContract({
+          address: token as Address, abi: ERC20, functionName: "decimals",
+        }).catch(() => 18) as Promise<number>,
+      ]);
+      setRaw(b);
+      setDecimals(Number(d));
+    } catch (e) { console.warn("[direct token balance]", e); }
+    finally { setLoading(false); }
+  }, [me, token]);
+
+  useEffect(() => {
+    refresh();
+    const id = setInterval(refresh, 15_000);
+    return () => clearInterval(id);
+  }, [refresh]);
+
+  const balance = Number(raw) / Math.pow(10, decimals);
+  return { balance, raw, decimals, loading, refresh };
+}
+
 // ─────────────── Token holdings ──────────────────────────────────────
 export type Holding = {
   address: string;          // token contract

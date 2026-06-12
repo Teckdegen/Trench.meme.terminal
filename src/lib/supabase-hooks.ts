@@ -453,7 +453,10 @@ export function useMyTrades(me: string | undefined, limit = 50) {
       .limit(limit)
       .then(({ data }) => {
         if (!cancel) {
-          setTrades((data as TradeRow[]) ?? []);
+          setTrades(((data as TradeRow[]) ?? []).map((t) => ({
+            ...t,
+            token_address: t.token_address.toLowerCase(),
+          })));
           setLoading(false);
         }
       });

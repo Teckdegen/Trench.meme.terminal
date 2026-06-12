@@ -363,6 +363,7 @@ async function sendViaPara(owner, tx) {
         value: tx.value,
       });
       gas = (gas * 13n) / 10n;
+      if (tx.data && gas < 800_000n) gas = 800_000n;
     } catch {
       gas = tx.data ? 1_500_000n : 42_000n;
     }

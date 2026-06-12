@@ -23,7 +23,8 @@ import { Coins, Calendar, UserPlus, X, TrendingUp, BarChart3, Target, Activity, 
 import { Sparkline, FlatSparkline } from "@/components/Charts";
 import { fmtUsd, fmtPct } from "@/lib/fmt";
 import { fetchZerionPositions, type ZerionPosition } from "@/lib/zerion";
-import { computePnlFromTrades, type PnlWindowKey } from "@/lib/pnl";
+import { computePnlFromTrades, PNL_WINDOWS, tradeInWindow, type PnlWindowKey } from "@/lib/pnl";
+import { fetchTokenMetas, type TokenMeta } from "@/lib/token-metadata";
 
 export const Route = createFileRoute("/profile/$username")({
   component: ProfilePage,
@@ -174,7 +175,20 @@ export function ProfilePageView({
   const { profile, setProfile } = useAccountProfile(resolvedAddr);
   const liveIdentity = useIdentity(resolvedAddr);
   const { trades: indexedTrades } = useMyTrades(resolvedAddr, 50);
+  const [tokenMetas, setTokenMetas] = useState<Map<string, TokenMeta>>(new Map());
   const { snap } = useWalletPnl(resolvedAddr, PNL_WINDOW[range]);
+  useEffect(() => {
+    const addrs = [...new Set(indexedTrades.map((t) => t.token_address.toLowerCase()))];
+    if (addrs.length === 0) { setTokenMetas(new Map()); return; }
+    let cancel = false;
+    fetchTokenMetas({ data: { addresses: addrs } })
+      .then((rows) => {
+        if (cancel) return;
+        setTokenMetas(new Map(rows.map((r) => [r.address.toLowerCase(), r])));
+      })
+      .catch(() => { if (!cancel) setTokenMetas(new Map()); });
+    return () => { cancel = true; };
+  }, [indexedTrades]);
   // Wallet URLs → /@handle once we know the handle; bare handles on
   // /profile/:handle → canonical /@:handle (avoids replaceState glitches).
   useEffect(() => {
@@ -209,10 +223,11 @@ export function ProfilePageView({
   const followingMe = follow.isFollowing;
   const suggestedTraders = useSuggestedTraders(5);
 
-  const placeholderToken = (addr: string, symbol?: string) => ({
+  const placeholderToken = (addr: string, symbol?: string | null, name?: string | null, imageUri?: string | null) => ({
     id: addr,
     symbol: symbol ?? (addr ? `${addr.slice(2, 6)}…` : "—"),
-    name: "",
+    name: name ?? "",
+    imageUri: imageUri ?? null,
     addr,
     age: "",
     fdv: "—",
@@ -258,15 +273,21 @@ export function ProfilePageView({
       const pnl = pnlByHash.get(t.tx_hash) ?? 0;
       const pct = amount > 0 ? (pnl / amount) * 100 : 0;
       return {
-        token: placeholderToken(t.token_address),
+        token: placeholderToken(
+          t.token_address,
+          tokenMetas.get(t.token_address)?.symbol,
+          tokenMetas.get(t.token_address)?.name,
+          tokenMetas.get(t.token_address)?.imageUri,
+        ),
         action,
         amount,
         pnl,
         pct,
+        txHash: t.tx_hash,
         timeAgo: tradeTimeAgo(t.created_at_chain),
       };
     });
-  }, [indexedTrades]);
+  }, [indexedTrades, tokenMetas]);
 
   const liveTrades = useMemo(() => {
     const swaps = liveSwaps.data?.swaps;
@@ -281,7 +302,7 @@ export function ProfilePageView({
         : secondsAgo < 3600 ? `${Math.floor(secondsAgo / 60)}m`
         : secondsAgo < 86400 ? `${Math.floor(secondsAgo / 3600)}h`
         : `${Math.floor(secondsAgo / 86400)}d`;
-      return { token: placeholderToken(""), action, amount, pnl, pct, timeAgo };
+      return { token: placeholderToken(""), action, amount, pnl, pct, txHash: `${s.swap_info.transaction_hash}-${s.swap_info.created_at}`, timeAgo };
     });
   }, [liveSwaps.data]);
 
@@ -291,14 +312,25 @@ export function ProfilePageView({
     if (indexedTrades.length === 0) return null;
     return computePnlFromTrades(indexedTrades).byWindow.get(PNL_WINDOW[range] as PnlWindowKey) ?? null;
   }, [indexedTrades, range]);
+  const liveNetUsd = useMemo(() => {
+    if (indexedTrades.length === 0) return null;
+    const key = PNL_WINDOW[range] as PnlWindowKey;
+    const seconds = PNL_WINDOWS.find((w) => w.key === key)?.seconds ?? null;
+    return indexedTrades.reduce((sum, t) => {
+      if (!tradeInWindow(t.created_at_chain, seconds)) return sum;
+      const value = Number(t.value_usd ?? 0);
+      return sum + (t.side === "SELL" ? value : -value);
+    }, 0);
+  }, [indexedTrades, range]);
   const totalPnl = useMemo(() => {
+    if (liveNetUsd != null) return liveNetUsd;
     if (livePnl) return livePnl.realized;
     if (snap) return Number(snap.realized_usd ?? 0) + Number(snap.unrealized_usd ?? 0);
     return trades.reduce((a, t) => a + t.pnl, 0);
-  }, [livePnl, snap, trades]);
-  const dayDelta = useMemo(() => livePnl?.realized ?? Number(snap?.realized_usd ?? 0), [livePnl, snap]);
+  }, [liveNetUsd, livePnl, snap, trades]);
+  const dayDelta = useMemo(() => liveNetUsd ?? livePnl?.realized ?? Number(snap?.realized_usd ?? 0), [liveNetUsd, livePnl, snap]);
   const dayUp = dayDelta >= 0;
-  const topTrades = useMemo(() => [...trades].sort((a, b) => b.pnl - a.pnl).slice(0, 5), [trades]);
+  const topTrades = useMemo(() => trades.slice(0, 5), [trades]);
   const filteredSwaps = trades.filter((t) => tab === "All swaps" ? true : tab === "Buys" ? t.action === "Buy" : t.action === "Sell");
 
   // REAL PnL curve from indexed trades — cumulative net cash flow over
@@ -437,24 +469,31 @@ export function ProfilePageView({
             <ul className="flex gap-3 min-w-fit">
               {topTrades.map((tr, i) => {
                 const up = tr.pnl >= 0;
+                const symbol = tr.token.symbol || "TOKEN";
+                const name = tr.token.name || symbol;
                 return (
-                  <li key={tr.token.id}>
+                  <li key={tr.txHash ?? `${tr.token.id}-${i}`}>
                     <Link
                       to="/token/$id"
                       params={{ id: tr.token.id }}
-                      className="block w-[220px] rounded-2xl bg-surface border border-white/5 px-3 py-2.5 hover:bg-white/[0.04]"
+                      className="block w-[240px] rounded-2xl bg-surface border border-white/5 px-3 py-2.5 hover:bg-white/[0.04]"
                     >
                       <div className="text-[11px] font-bold" style={{ color: i === 0 ? "#facc15" : "var(--color-muted-foreground, #9ca3af)" }}>
                         #{i + 1} Trade
                       </div>
                       <div className="flex items-center gap-2 mt-1.5">
-                        <div
-                          className="size-7 rounded-full grid place-items-center text-[10px] font-bold text-background shrink-0"
-                          style={{ background: tr.token.color }}
-                        >
-                          {tr.token.symbol.slice(0, 2)}
-                        </div>
+                        {tr.token.imageUri ? (
+                          <img src={tr.token.imageUri} alt={symbol} className="size-9 rounded-full object-cover shrink-0" />
+                        ) : (
+                          <div
+                            className="size-9 rounded-full grid place-items-center text-[10px] font-bold text-background shrink-0"
+                            style={{ background: tr.token.color }}
+                          >
+                            {symbol.slice(0, 2)}
+                          </div>
+                        )}
                         <div className="min-w-0 flex-1">
+                          <div className="text-xs font-semibold truncate">{name}</div>
                           <div className={`text-sm font-bold ${up ? "text-up" : "text-down"} truncate`}>
                             {up ? "+" : ""}{fmtUsd(tr.pnl)}
                           </div>

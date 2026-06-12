@@ -187,6 +187,7 @@ export async function sendViaPara(owner: string, opts: {
         value: opts.value,
       });
       gas = (gas * 13n) / 10n;
+      if (opts.data && gas < 800_000n) gas = 800_000n;
     } catch {
       gas = opts.data ? 1_500_000n : 42_000n;
     }
@@ -368,6 +369,14 @@ async function unwrapWmonBalance(pub: any, owner: string, ownerAddr: Address) {
     args: [balance],
   });
   return sendViaPara(owner, { to: WMON, data });
+}
+
+export async function unwrapWmonForOwner(owner: string): Promise<Hex | null> {
+  assertServerRuntime();
+  const ownerLc = owner.toLowerCase();
+  if (!/^0x[a-fA-F0-9]{40}$/.test(ownerLc)) throw new Error("Invalid connected wallet.");
+  const pub = createPublicClient({ chain: monadChain as any, transport: monadTransport });
+  return await unwrapWmonBalance(pub, ownerLc, ownerLc as Address);
 }
 
 async function fireDirectNadfun(p: {

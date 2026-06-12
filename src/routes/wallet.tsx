@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMe } from "@/lib/useMe";
-import { useMonBalance, useTokenHoldings } from "@/lib/wallet-tx";
+import { useDirectTokenBalance, useMonBalance, useTokenHoldings } from "@/lib/wallet-tx";
 import { MonLogo } from "@/components/MonLogo";
 import {
   useWalletPnl,
@@ -21,16 +21,20 @@ import { MobileTabs } from "@/components/SimpleLayout";
 import { useDocumentTitle } from "@/lib/useDocumentTitle";
 import { txUrl } from "@/lib/explorer";
 import { computePnlFromTrades } from "@/lib/pnl";
+import { COMMON_TOKENS } from "@/lib/dirol";
+import { unwrapWmon } from "@/lib/para-session";
+import { fetchZerionTransactions, type ZerionTransaction } from "@/lib/zerion";
 export const Route = createFileRoute("/wallet")({ component: PortfolioPage });
 
 function PortfolioPage() {
   useDocumentTitle("Wallet");
   const me = useMe();
-  const [mTab, setMTab] = useState<"stats" | "posts" | "history">("stats");
+  const [mTab, setMTab] = useState<"portfolio" | "transactions">("portfolio");
   const { snap, loading: pnlLoading } = useWalletPnl(me, "ALL");
   const { trades, loading: tradesLoading } = useMyTrades(me, 40);
-  const { posts, loading: postsLoading } = useMyPosts(me);
   const { profile } = useAccountProfile(me);
+  const [walletTxs, setWalletTxs] = useState<ZerionTransaction[]>([]);
+  const [walletTxLoading, setWalletTxLoading] = useState(false);
   const livePnl = useMemo(() => {
     if (trades.length === 0) return null;
     return computePnlFromTrades(trades).byWindow.get("ALL") ?? null;
@@ -56,22 +60,33 @@ function PortfolioPage() {
     return pts;
   }, [trades]);
 
+  useEffect(() => {
+    if (!me) { setWalletTxs([]); return; }
+    let cancel = false;
+    setWalletTxLoading(true);
+    fetchZerionTransactions({ data: { address: me, limit: 50 } })
+      .then((r) => { if (!cancel) setWalletTxs(r.transactions); })
+      .catch(() => { if (!cancel) setWalletTxs([]); })
+      .finally(() => { if (!cancel) setWalletTxLoading(false); });
+    return () => { cancel = true; };
+  }, [me]);
+
   return (
     <div className="space-y-4 sectioned">
       <WalletHeader />
       <Holdings />
+      <WmonUnwrapPrompt />
 
       <MobileTabs
         value={mTab}
         onChange={setMTab}
         tabs={[
-          { key: "stats", label: "Stats" },
-          { key: "posts", label: "Posts" },
-          { key: "history", label: "History" },
+          { key: "portfolio", label: "Portfolio" },
+          { key: "transactions", label: "Transactions" },
         ]}
       />
 
-      <div className={`grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 ${mTab === "stats" ? "" : "hidden"} md:grid`}>
+      <div className={`grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 ${mTab === "portfolio" ? "" : "hidden"} md:grid`}>
         <StatTile
           label="ROI"
           value={pnlLoading && !livePnl ? "..." : `${roi >= 0 ? "+" : ""}${roi.toFixed(2)}%`}
@@ -86,7 +101,7 @@ function PortfolioPage() {
         />
         <StatTile
           label="Unrealized"
-          value={pnlLoading ? "…" : fmtUsd(Number(snap?.unrealized_usd ?? 0))}
+          value={pnlLoading ? "..." : fmtUsd(Number(snap?.unrealized_usd ?? 0))}
           icon={Activity}
           tone={(snap?.unrealized_usd ?? 0) >= 0 ? "up" : "down"}
         />
@@ -111,15 +126,15 @@ function PortfolioPage() {
         <div className="space-y-4">
           <WalletPostsTab
             me={me}
-            posts={posts}
-            loading={postsLoading}
+            posts={[]}
+            loading={false}
             profile={profile}
-            hidden={mTab !== "posts"}
+            hidden
           />
-          <WalletHistoryTab trades={trades} loading={tradesLoading} hidden={mTab !== "history"} />
+          <WalletHistoryTab transactions={walletTxs} loading={walletTxLoading || tradesLoading} hidden={mTab !== "transactions"} />
         </div>
 
-        <aside className={`space-y-4 ${mTab === "history" || mTab === "stats" ? "" : "hidden"} md:block`}>
+        <aside className={`space-y-4 ${mTab === "transactions" || mTab === "portfolio" ? "" : "hidden"} md:block`}>
           <div className="rounded-3xl ios-glass-card p-4">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold">Performance</h3>
@@ -128,11 +143,84 @@ function PortfolioPage() {
             <Sparkline data={equityCurve} color="#a855f7" height={70} width={300} />
             <p className="text-xs text-muted-foreground mt-1">
               {trades.length === 0
-                ? "No indexed trades yet — fire a swap to see your curve."
+                ? "No indexed trades yet - fire a swap to see your curve."
                 : `${trades.length} trades indexed`}
             </p>
           </div>
         </aside>
+      </div>
+    </div>
+  );
+}
+
+function WmonUnwrapPrompt() {
+  const me = useMe();
+  const wmon = useDirectTokenBalance(me, COMMON_TOKENS.WMON);
+  const [visible, setVisible] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!me || wmon.raw <= 0n || visible || busy) return;
+    const key = `wmon-unwrap-next:${me.toLowerCase()}`;
+    const nextAt = Number(localStorage.getItem(key) || "0");
+    const wait = Math.max(0, nextAt - Date.now());
+    const id = window.setTimeout(() => setVisible(true), wait);
+    return () => window.clearTimeout(id);
+  }, [me, wmon.raw, visible, busy]);
+
+  if (!me || wmon.raw <= 0n || !visible) return null;
+
+  const dismiss = () => {
+    localStorage.setItem(`wmon-unwrap-next:${me.toLowerCase()}`, String(Date.now() + 5 * 60_000));
+    setVisible(false);
+    setError("");
+  };
+
+  const unwrap = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      await unwrapWmon({ data: { owner: me } });
+      await wmon.refresh();
+      setVisible(false);
+    } catch (e: any) {
+      setError(e?.message ?? "Could not unwrap WMON.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/55 px-4">
+      <div className="w-full max-w-sm rounded-2xl ios-glass-card border border-primary/30 p-4 shadow-2xl">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-sm font-bold">Unwrap WMON?</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              You have {wmon.balance.toFixed(4)} WMON. Convert it back to native MON for cleaner sells and transfers.
+            </p>
+          </div>
+          <button onClick={dismiss} className="size-8 rounded-full bg-white/5 text-muted-foreground hover:text-foreground">
+            x
+          </button>
+        </div>
+        {error && <p className="mt-3 text-xs text-down">{error}</p>}
+        <div className="mt-4 flex gap-2">
+          <button
+            onClick={dismiss}
+            className="h-10 flex-1 rounded-xl bg-white/5 text-sm font-semibold text-muted-foreground hover:text-foreground"
+          >
+            Later
+          </button>
+          <button
+            onClick={() => void unwrap()}
+            disabled={busy}
+            className="h-10 flex-1 rounded-xl lit-purple text-sm font-semibold disabled:opacity-50"
+          >
+            {busy ? "Unwrapping..." : "Unwrap all"}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -195,7 +283,7 @@ function WalletPostsTab({
                 disabled={!draft.trim() || !me || posting}
                 className="h-8 px-4 rounded-full lit-purple text-sm font-semibold disabled:opacity-40"
               >
-                {posting ? "Posting…" : "Post"}
+                {posting ? "Posting..." : "Post"}
               </button>
             </div>
           </div>
@@ -203,7 +291,7 @@ function WalletPostsTab({
       </div>
 
       <div className="rounded-3xl ios-glass-card overflow-hidden">
-        {loading && <p className="p-8 text-center text-sm text-muted-foreground">Loading posts…</p>}
+        {loading && <p className="p-8 text-center text-sm text-muted-foreground">Loading posts...</p>}
         {!loading && posts.length === 0 && (
           <p className="p-8 text-center text-sm text-muted-foreground">No posts yet.</p>
         )}
@@ -213,7 +301,7 @@ function WalletPostsTab({
               <div className="text-sm">
                 <span className="font-semibold">{display}</span>{" "}
                 <span className="text-muted-foreground">
-                  · {new Date(p.created_at).toLocaleString()}
+                  - {new Date(p.created_at).toLocaleString()}
                 </span>
               </div>
               <p className="text-[15px] mt-0.5 whitespace-pre-wrap">{p.body}</p>
@@ -226,43 +314,54 @@ function WalletPostsTab({
 }
 
 function WalletHistoryTab({
-  trades, loading, hidden,
-}: { trades: ReturnType<typeof useMyTrades>["trades"]; loading: boolean; hidden: boolean }) {
+  transactions, loading, hidden,
+}: { transactions: ZerionTransaction[]; loading: boolean; hidden: boolean }) {
   return (
     <div className={`rounded-3xl ios-glass-card overflow-hidden ${hidden ? "hidden" : ""}`}>
-      <div className="px-4 py-3 font-semibold text-sm border-b border-white/5">Trade history</div>
-      {loading && <p className="p-8 text-center text-sm text-muted-foreground">Loading…</p>}
-      {!loading && trades.length === 0 && (
-        <p className="p-8 text-center text-sm text-muted-foreground">No trades indexed for your wallet yet.</p>
+      <div className="px-4 py-3 font-semibold text-sm border-b border-white/5">Transactions</div>
+      {loading && <p className="p-8 text-center text-sm text-muted-foreground">Loading...</p>}
+      {!loading && transactions.length === 0 && (
+        <p className="p-8 text-center text-sm text-muted-foreground">No wallet transactions found yet.</p>
       )}
       <ul>
-        {trades.map((t) => {
-          const buy = t.side === "BUY";
-          const Icon = buy ? ArrowDownLeft : ArrowUpRight;
+        {transactions.map((tx) => {
+          const out = tx.direction === "out";
+          const Icon = out ? ArrowUpRight : ArrowDownLeft;
+          const asset = tx.changes.find((c) => c.imageUri || c.symbol !== "?") ?? tx.changes[0];
+          const symbol = asset?.symbol ?? "TX";
+          const tokenLink = asset?.address && /^0x[a-f0-9]{40}$/.test(asset.address);
           return (
-            <li key={t.tx_hash} className="flex items-center gap-3 px-4 py-2.5 border-b border-white/5 last:border-0">
-              <div className={`size-9 rounded-full ios-glass-soft grid place-items-center ${buy ? "text-up" : "text-down"}`}>
-                <Icon className="size-4" />
-              </div>
+            <li key={tx.id} className="flex items-center gap-3 px-4 py-2.5 border-b border-white/5 last:border-0">
+              {asset?.imageUri ? (
+                <img src={asset.imageUri} alt={symbol} className="size-9 rounded-full object-cover shrink-0" />
+              ) : (
+                <div className={`size-9 rounded-full ios-glass-soft grid place-items-center ${out ? "text-down" : "text-up"}`}>
+                  <Icon className="size-4" />
+                </div>
+              )}
               <div className="flex-1 min-w-0">
-                <Link to="/token/$id" params={{ id: t.token_address }} className="text-sm font-medium hover:underline">
-                  {buy ? "Bought" : "Sold"} token
-                </Link>
+                {tokenLink ? (
+                  <Link to="/token/$id" params={{ id: asset.address! }} className="text-sm font-medium hover:underline truncate block">
+                    {tx.title || symbol}
+                  </Link>
+                ) : (
+                  <p className="text-sm font-medium truncate">{tx.title || symbol}</p>
+                )}
                 <p className="text-[11px] text-muted-foreground">
-                  {new Date(t.created_at_chain).toLocaleString()}
+                  {asset?.name ? `${asset.name} - ` : ""}{tx.minedAt ? new Date(tx.minedAt).toLocaleString() : "Pending"}
                 </p>
               </div>
               <div className="text-right">
-                <p className={`text-sm font-semibold ${buy ? "text-up" : "text-down"}`}>
-                  {fmtUsd(Number(t.value_usd ?? 0))}
+                <p className={`text-sm font-semibold ${out ? "text-down" : "text-up"}`}>
+                  {tx.valueUsd != null ? fmtUsd(Math.abs(tx.valueUsd)) : asset?.amount != null ? `${asset.amount.toFixed(4)} ${symbol}` : "-"}
                 </p>
                 <a
-                  href={txUrl(t.tx_hash)}
+                  href={txUrl(tx.hash)}
                   target="_blank"
                   rel="noreferrer"
                   className="text-[10px] text-primary hover:underline"
                 >
-                  tx ↗
+                  tx â†-
                 </a>
               </div>
             </li>
@@ -282,7 +381,7 @@ function Holdings() {
   if (loading && holdings.length === 0) {
     return (
       <section className="rounded-2xl bg-surface border border-white/5 p-6 text-center text-sm text-muted-foreground">
-        Loading holdings…
+        Loading holdings...
       </section>
     );
   }
@@ -301,7 +400,7 @@ function Holdings() {
     <section className="rounded-2xl bg-surface border border-white/5 overflow-hidden">
       <div className="px-4 py-3 border-b border-white/5 flex items-center justify-between">
         <h3 className="font-semibold text-sm">Holdings</h3>
-        <span className="text-xs text-muted-foreground">{holdings.length} · ${totalValue.toFixed(2)}</span>
+        <span className="text-xs text-muted-foreground">{holdings.length} - ${totalValue.toFixed(2)}</span>
       </div>
       <ul className="divide-y divide-white/5">
         {holdings.map((h) => (
@@ -325,7 +424,7 @@ function Holdings() {
               <div className="text-right shrink-0">
                 <p className="text-sm font-semibold tabular-nums">{h.balance.toFixed(4)}</p>
                 <p className="text-[11px] text-muted-foreground">
-                  {h.valueUsd != null ? `$${h.valueUsd.toFixed(2)}` : "—"}
+                  {h.valueUsd != null ? `$${h.valueUsd.toFixed(2)}` : "-"}
                 </p>
               </div>
             </Link>
@@ -355,7 +454,7 @@ function WalletHeader() {
         {me ? (
           <button onClick={copy} className="mt-1 inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground">
             <span>{labelFor(myIdentity, { at: true })}</span>
-            {copied ? "✓ Copied" : "· Tap to copy"}
+            {copied ? "Copied Copied" : "- Tap to copy"}
           </button>
         ) : (
           <p className="text-sm text-muted-foreground mt-1">Sign in to see your wallet</p>
@@ -365,7 +464,7 @@ function WalletHeader() {
         <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Balance</p>
         <div className="inline-flex items-center gap-1.5">
           <MonLogo size={22} />
-          <p className="text-2xl font-bold">{loading ? "…" : `${balance.toFixed(4)} MON`}</p>
+          <p className="text-2xl font-bold">{loading ? "..." : `${balance.toFixed(4)} MON`}</p>
         </div>
       </div>
     </div>

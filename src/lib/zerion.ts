@@ -27,6 +27,27 @@ export type ZerionPosition = {
   chainId: string;            // "monad", "ethereum", etc.
 };
 
+export type ZerionTransaction = {
+  id: string;
+  hash: string;
+  direction: "in" | "out" | "self" | "unknown";
+  type: string;
+  minedAt: string | null;
+  status: string | null;
+  title: string;
+  subtitle: string;
+  valueUsd: number | null;
+  changes: Array<{
+    address: string | null;
+    symbol: string;
+    name: string;
+    imageUri: string | null;
+    amount: number | null;
+    amountRaw: string | null;
+    valueUsd: number | null;
+  }>;
+};
+
 const ZERION_BASE = "https://api.zerion.io/v1";
 const CHAIN_SLUG = process.env.ZERION_CHAIN_SLUG ?? "monad";
 
@@ -85,5 +106,72 @@ export const fetchZerionPositions = createServerFn({ method: "GET" })
     } catch (e) {
       console.warn("[zerion] fetch failed:", e);
       return { positions: [], source: "empty" };
+    }
+  });
+
+export const fetchZerionTransactions = createServerFn({ method: "GET" })
+  .inputValidator((d: { address: string; limit?: number }) => d)
+  .handler(async ({ data }): Promise<{ transactions: ZerionTransaction[]; source: "zerion" | "empty" }> => {
+    const auth = authHeader();
+    if (!auth) return { transactions: [], source: "empty" };
+    const addr = data.address.toLowerCase();
+    const limit = Math.max(1, Math.min(100, data.limit ?? 50));
+    const url = `${ZERION_BASE}/wallets/${addr}/transactions/?filter[chain_ids]=${CHAIN_SLUG}&page[size]=${limit}`;
+    try {
+      const r = await fetch(url, {
+        headers: {
+          Authorization: auth,
+          Accept: "application/json",
+        },
+      });
+      if (!r.ok) {
+        console.warn(`[zerion-tx] ${addr} -> ${r.status}`);
+        return { transactions: [], source: "empty" };
+      }
+      const json: any = await r.json();
+      const rows = Array.isArray(json?.data) ? json.data : [];
+      const transactions: ZerionTransaction[] = rows.map((row: any) => {
+        const a = row.attributes ?? {};
+        const transfers = [
+          ...(Array.isArray(a.transfers) ? a.transfers : []),
+          ...(Array.isArray(a.fungible_transfers) ? a.fungible_transfers : []),
+          ...(Array.isArray(a.changes) ? a.changes : []),
+        ];
+        const changes = transfers.map((t: any) => {
+          const fi = t.fungible_info ?? t.asset?.fungible_info ?? t.asset ?? {};
+          const impl = (fi.implementations ?? []).find((i: any) => i.chain_id === CHAIN_SLUG)
+            ?? fi.implementations?.[0]
+            ?? {};
+          const quantity = t.quantity ?? t.amount ?? {};
+          return {
+            address: typeof impl.address === "string" ? impl.address.toLowerCase() : null,
+            symbol: String(fi.symbol ?? t.symbol ?? "?"),
+            name: String(fi.name ?? t.name ?? fi.symbol ?? "Token"),
+            imageUri: fi.icon?.url ?? t.icon?.url ?? null,
+            amount: quantity.float != null ? Number(quantity.float) : null,
+            amountRaw: quantity.int != null ? String(quantity.int) : null,
+            valueUsd: t.value != null ? Number(t.value) : t.value_usd != null ? Number(t.value_usd) : null,
+          };
+        });
+        const txHash = String(a.hash ?? row.id ?? "");
+        const type = String(a.operation_type ?? a.type ?? "transaction");
+        const title = String(a.title ?? type.replace(/_/g, " "));
+        return {
+          id: String(row.id ?? txHash),
+          hash: txHash,
+          direction: ["in", "out", "self"].includes(a.direction) ? a.direction : "unknown",
+          type,
+          minedAt: a.mined_at ?? a.minedAt ?? null,
+          status: a.status ?? null,
+          title,
+          subtitle: a.subtitle ?? "",
+          valueUsd: a.value != null ? Number(a.value) : null,
+          changes,
+        };
+      }).filter((tx: ZerionTransaction) => /^0x[a-fA-F0-9]{64}$/.test(tx.hash));
+      return { transactions, source: "zerion" };
+    } catch (e) {
+      console.warn("[zerion-tx] fetch failed:", e);
+      return { transactions: [], source: "empty" };
     }
   });
