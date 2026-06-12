@@ -53,24 +53,24 @@ function Landing() {
 
         {/* Hero */}
         <main className="flex-1 grid place-items-center px-5 py-16">
-          <div className="max-w-3xl text-center">
+          <div className="max-w-4xl text-center">
             <h1
-              className="font-black tracking-tight leading-[1.15] text-[#d6d3d1]"
-              style={{ fontSize: "clamp(28px, 4vw, 56px)" }}
+              className="font-black tracking-tight leading-[1.12] text-[#d6d3d1]"
+              style={{ fontSize: "clamp(36px, 5.5vw, 76px)" }}
             >
               The most <span className="text-[#a855f7]">powerful</span> way to
               trade the trenches.
             </h1>
-            <p className="mt-5 text-[#d6d3d1] text-sm sm:text-base leading-relaxed max-w-xl mx-auto">
+            <p className="mt-6 text-[#d6d3d1] text-lg sm:text-2xl leading-relaxed max-w-2xl mx-auto">
               <span className="font-bold text-white">Trench the odds</span>
             </p>
-            <div className="mt-8 flex items-center justify-center gap-3">
+            <div className="mt-10 flex items-center justify-center gap-3">
               <a
                 href="/meme"
-                className="px-6 py-2.5 rounded-full bg-[#a855f7] hover:bg-[#9333ea] text-white text-sm font-bold inline-flex items-center gap-1.5 transition-colors"
+                className="px-8 py-3.5 rounded-full bg-[#a855f7] hover:bg-[#9333ea] text-white text-base font-bold inline-flex items-center gap-2 transition-colors"
                 style={{ boxShadow: "0 10px 40px rgba(168,85,247,0.5)" }}
               >
-                Start trading <ArrowUpRight className="size-4" />
+                Start trading <ArrowUpRight className="size-5" />
               </a>
             </div>
           </div>
