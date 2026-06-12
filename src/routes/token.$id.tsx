@@ -525,7 +525,7 @@ function TradeButton({
           rel="noreferrer"
           className="block mt-2 text-[11px] text-primary text-center hover:underline"
         >
-          Tx submitted · view on {MONAD_EXPLORER_NAME}
+          Tx confirmed · view on {MONAD_EXPLORER_NAME}
         </a>
       )}
       {okMsg && <p className="text-[11px] text-up text-center mt-2">{okMsg}</p>}

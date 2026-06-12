@@ -46,6 +46,11 @@ async function waitForBuyBalanceIncrease(p: ExecParams, before: bigint | null) {
   throw new Error("Buy transaction confirmed, but token balance did not increase yet.");
 }
 
+async function waitForConfirmedTransaction(hash: Hex) {
+  const receipt = await publicClient.waitForTransactionReceipt({ hash, timeout: 120_000 });
+  if (receipt.status !== "success") throw new Error(`Transaction reverted (${hash})`);
+}
+
 export type ExecParams = {
   venue: "nadfun" | "dirol";
   side: "buy" | "sell";
@@ -91,6 +96,7 @@ export function useSwapExecute() {
         ? await tokenBalance(p.tokenAddress, p.recipient).catch(() => null)
         : null;
       const h = await executeSwap(p);
+      await waitForConfirmedTransaction(h);
       if (p.side === "buy") await waitForBuyBalanceIncrease(p, beforeTokenBalance);
       setHash(h);
       // Sound + toast — fire-and-forget so a UI hiccup never blocks the
