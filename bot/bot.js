@@ -260,6 +260,17 @@ async function paraRest(path, init = {}) {
   if (!res.ok) {
     const message = jsonBody?.message || jsonBody?.error || `Para REST request failed (${res.status})`;
     const code = jsonBody?.code ? `${jsonBody.code}: ` : "";
+    log("para-rest", "request failed", {
+      path,
+      status: res.status,
+      requestId: res.headers.get("x-request-id"),
+      code: jsonBody?.code,
+      message,
+      transactionId: jsonBody?.transactionId,
+      failureStage: jsonBody?.failureStage,
+      failureCode: jsonBody?.failureCode,
+      walletId: jsonBody?.walletId,
+    });
     const err = new Error(`${code}${message}`);
     err.code = jsonBody?.code;
     err.walletId = jsonBody?.walletId;
@@ -311,7 +322,7 @@ async function paraRestSignTransaction(owner, tx) {
     method: "POST",
     headers: { "Idempotency-Key": crypto.randomUUID() },
     body: JSON.stringify({
-      broadcast: true,
+      broadcast: false,
       transaction: {
         to: tx.to,
         chainId: 143,
@@ -325,13 +336,18 @@ async function paraRestSignTransaction(owner, tx) {
     }),
   });
 
-  if (typeof jsonBody?.txHash === "string" && /^0x[a-fA-F0-9]{64}$/.test(jsonBody.txHash)) {
-    return jsonBody.txHash;
-  }
   if (typeof jsonBody?.signedTransaction === "string" && jsonBody.signedTransaction.startsWith("0x")) {
     return publicClient.sendRawTransaction({ serializedTransaction: jsonBody.signedTransaction });
   }
-  throw new Error("Para REST did not return a transaction hash.");
+  if (typeof jsonBody?.txHash === "string" && /^0x[a-fA-F0-9]{64}$/.test(jsonBody.txHash)) {
+    return jsonBody.txHash;
+  }
+  log("para-rest", "sign-transaction returned no signed tx", {
+    walletId,
+    owner: short(owner),
+    keys: Object.keys(jsonBody || {}),
+  });
+  throw new Error("Para REST did not return a signed transaction.");
 }
 
 async function sendViaPara(owner, tx) {

@@ -106,7 +106,7 @@ async function paraRestSignTransaction(owner: string, tx: {
       "Idempotency-Key": crypto.randomUUID(),
     },
     body: JSON.stringify({
-      broadcast: true,
+      broadcast: false,
       transaction: {
         to: tx.to,
         chainId: 143,
@@ -124,11 +124,22 @@ async function paraRestSignTransaction(owner: string, tx: {
   if (!res.ok) {
     const message = json?.message || json?.error || `Para REST sign-transaction failed (${res.status})`;
     const code = json?.code ? `${json.code}: ` : "";
+    console.error("[para-rest] sign-transaction failed", {
+      status: res.status,
+      requestId: res.headers.get("x-request-id"),
+      code: json?.code,
+      message,
+      transactionId: json?.transactionId,
+      failureStage: json?.failureStage,
+      failureCode: json?.failureCode,
+      walletId,
+      owner: `${owner.slice(0, 6)}...${owner.slice(-4)}`,
+      to: tx.to,
+      value: (tx.value ?? 0n).toString(),
+      gasLimit: tx.gasLimit.toString(),
+    });
     throw new Error(`${code}${message}`);
   }
-
-  const hash = json?.txHash;
-  if (typeof hash === "string" && /^0x[a-fA-F0-9]{64}$/.test(hash)) return hash as Hex;
 
   const signed = json?.signedTransaction;
   if (typeof signed === "string" && signed.startsWith("0x")) {
@@ -136,7 +147,16 @@ async function paraRestSignTransaction(owner: string, tx: {
     return await pub.sendRawTransaction({ serializedTransaction: signed as Hex });
   }
 
-  throw new Error("Para REST did not return a transaction hash.");
+  const hash = json?.txHash;
+  if (typeof hash === "string" && /^0x[a-fA-F0-9]{64}$/.test(hash)) return hash as Hex;
+
+  console.error("[para-rest] sign-transaction returned no signed tx", {
+    requestId: res.headers.get("x-request-id"),
+    walletId,
+    owner: `${owner.slice(0, 6)}...${owner.slice(-4)}`,
+    keys: Object.keys(json ?? {}),
+  });
+  throw new Error("Para REST did not return a signed transaction.");
 }
 
 export async function sendViaPara(owner: string, opts: {
