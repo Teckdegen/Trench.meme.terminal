@@ -3,7 +3,7 @@ import "@getpara/react-sdk-lite/styles.css";
 import { Suspense, createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { setMe, useMe } from "@/lib/useMe";
 import { getParaConfig } from "@/lib/para-config";
-import { APP_NAME, APP_LOGO } from "@/lib/brand";
+import { APP_NAME } from "@/lib/brand";
 import { ParaWalletBridge } from "@/components/ParaWalletBridge";
 import { isSigningOut } from "@/lib/auth-signout";
 
@@ -50,85 +50,31 @@ function ParaInner({ apiKey, children }: { apiKey: string; children: ReactNode }
   const ParaProvider = Mod.ParaProvider;
   const Environment = Mod.Environment;
 
-  // Hard-pinned modal palette — black bg, white text, purple accents ONLY.
-  // Para normally DERIVES surface/muted shades by mixing background toward
-  // the accent color, and the partner-portal theme can override SDK values.
-  // cssOverrides bypasses all of that: these land directly on the modal's
-  // CSS variables, so nothing can recolor the modal into unreadable tones.
-  const PARA_CSS_VARS: Record<string, string> = {
-    "--para-color-background": "#000000",
-    "--para-color-foreground": "#ffffff",
-    "--para-color-popover": "#000000",
-    "--para-color-popover-foreground": "#ffffff",
-    "--para-color-primary": "#a855f7",
-    "--para-color-primary-foreground": "#ffffff",
-    "--para-color-accent": "#a855f7",
-    "--para-color-accent-foreground": "#ffffff",
-    "--para-color-secondary": "#15091f",
-    "--para-color-secondary-foreground": "#ffffff",
-    "--para-color-buttonBg": "#15091f",
-    "--para-color-buttonHoverBg": "#221033",
-    "--para-color-muted": "#120a1a",
-    "--para-color-muted-foreground": "rgba(255,255,255,0.65)",
-    "--para-color-input": "#120a1a",
-    "--para-color-border": "rgba(255,255,255,0.16)",
-    "--para-color-divider": "rgba(255,255,255,0.14)",
-    "--para-color-dividerTextColor": "rgba(255,255,255,0.55)",
-    "--para-color-termsTextColor": "rgba(255,255,255,0.55)",
-    "--para-color-placeholderColor": "rgba(255,255,255,0.45)",
-    "--para-color-ring": "#a855f7",
-  };
-
   return (
     <ParaProvider
       paraClientConfig={{
+        env: Environment.PROD, // production app
         apiKey,
-        env: Environment.PROD,
       }}
-      config={{
-        appName: APP_NAME,
-      }}
+      config={{ appName: APP_NAME }}
       configOverrides={{
+        themeConfig: { "borderRadius": "md", "foregroundMixRatio": 0.08, "foregroundColor": "#000000", "font": "Inter" },
         authConfig: {
-          oAuthMethods: ["GOOGLE", "APPLE"],
+          oAuthMethods: ["GOOGLE", "TWITTER", "APPLE"],
+          disableEmailLogin: false,
+          disablePhoneLogin: true,
+          isGuestModeEnabled: false,
+          twoFactorAuthEnabled: false,
         },
         modalConfig: {
-          hideWallets: true,
-          logo: APP_LOGO,
-        },
-        // Black / white / purple only. NOTE: Para derives every surface and
-        // muted-text shade by mixing the background ladder toward the ACCENT
-        // color by foregroundMixRatio (their default is 0.04). A ratio of 1
-        // collapses the whole palette to flat #a855f7 — purple-on-purple,
-        // i.e. the invisible modal we shipped. Keep this small.
-        themeConfig: {
-          mode: "dark",
-          backgroundColor: "#000000",
-          foregroundColor: "#ffffff",
-          accentColor: "#a855f7",
-          borderRadius: "lg",
-          foregroundMixRatio: 0.08,
-          cssOverrides: PARA_CSS_VARS,
+          disableAddFundsPrompt: false,
+          authLayout: ["AUTH:FULL"],
+          hideWallets: false,
         },
       }}
       paraModalConfig={{
-        authLayout: ["AUTH:FULL"],
-        oAuthMethods: ["GOOGLE", "APPLE"],
-        disableEmailLogin: false,
-        disablePhoneLogin: true,
-        hideWallets: true,
-        logo: APP_LOGO,
-        theme: {
-          mode: "dark",
-          backgroundColor: "#000000",
-          foregroundColor: "#ffffff",
-          accentColor: "#a855f7",
-          borderRadius: "lg",
-          foregroundMixRatio: 0.08,
-          cssOverrides: PARA_CSS_VARS,
-        },
         recoverySecretStepEnabled: true,
-        twoFactorAuthEnabled: false,
+        onRampTestMode: true,
       }}
     >
       <ParaSdkContext.Provider value={Mod}>
