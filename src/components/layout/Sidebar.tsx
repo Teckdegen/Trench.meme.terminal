@@ -23,7 +23,7 @@ import { defaultAccountHandle } from "@/lib/handles";
 import { profileRoute } from "@/lib/identity";
 
 const nav: { to: any; params?: any; label: string; icon: any }[] = [
-  { to: "/", label: "Dashboard", icon: LayoutDashboard },
+  { to: "/meme", label: "Dashboard", icon: LayoutDashboard },
   { to: "/wallet", label: "Wallet", icon: User },
   { to: "/smart-money", label: "Smart Money", icon: Brain },
   { to: "/copy-trading", label: "Copy Trading", icon: Copy },
@@ -84,7 +84,7 @@ export function Sidebar({
     <>
       <div className="h-14 flex items-center justify-between px-4 border-b border-border">
         {showLabel && (
-          <Link to="/" onClick={onCloseMobile} className="flex items-center gap-2">
+          <Link to="/meme" onClick={onCloseMobile} className="flex items-center gap-2">
             <img
               src={APP_LOGO}
               alt={APP_NAME}

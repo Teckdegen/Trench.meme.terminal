@@ -17,7 +17,7 @@ const steps = [
     icon: TrendingUp,
     title: "Discover live tokens",
     body: "The dashboard streams New Pairs, Final Stretch, and Migrated tokens in real time. Tap any card to open the full trading view.",
-    cta: { to: "/", label: "Show me" },
+    cta: { to: "/meme", label: "Show me" },
   },
   {
     icon: Sparkles,

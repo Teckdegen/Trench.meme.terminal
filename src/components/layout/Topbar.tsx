@@ -43,7 +43,7 @@ export function Topbar({ onOpenMobile }: { onOpenMobile?: () => void }) {
       <div className="shrink-0 z-30 bg-background/70 backdrop-blur-md border-b border-white/[0.04]">
         <div className="h-14 flex items-center gap-2 sm:gap-3 px-3 sm:px-4">
           {/* Logo + name — far left */}
-          <Link to="/" className="flex items-center gap-1.5 shrink-0">
+          <Link to="/meme" className="flex items-center gap-1.5 shrink-0">
             <img src={APP_LOGO} alt={APP_NAME} className="size-6 rounded object-contain" />
             <span className="font-bold text-sm tracking-tight whitespace-nowrap hidden sm:inline">{APP_NAME}</span>
           </Link>

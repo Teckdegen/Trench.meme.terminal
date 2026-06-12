@@ -15,6 +15,9 @@ import { useParaSdk } from "@/components/ParaWalletProvider";
 // Any action inside these pages (follow, message, react) must use
 // useRequireAuth() so it triggers the modal on click.
 function isPublicRoute(pathname: string): boolean {
+  // Marketing landing page — fully public, the App button leads to /meme
+  // where the gate takes over.
+  if (pathname === "/") return true;
   // Profiles — /@handle and /profile/handle (no login required to view)
   if (pathname.startsWith("/profile/")) return true;
   if (pathname.startsWith("/@")) return true;
