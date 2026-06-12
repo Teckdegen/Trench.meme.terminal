@@ -64,6 +64,8 @@ type FiredSwap = {
   amountOut: bigint;
 };
 
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 function admin() {
   assertServerRuntime();
   return supabaseAdmin();
@@ -383,6 +385,14 @@ async function fireDirol(p: {
   isBuy: boolean;
   slippageBps: number;
 }): Promise<FiredSwap> {
+  const wmonBefore: bigint | null = !p.isBuy
+    ? await p.pub.readContract({
+      address: WMON,
+      abi: ERC20_ABI,
+      functionName: "balanceOf",
+      args: [p.ownerAddr],
+    }).catch(() => null)
+    : null;
   const swap = await getDirolSwap({
     token: p.token,
     owner: p.ownerAddr,
@@ -407,7 +417,23 @@ async function fireDirol(p: {
     value: p.isBuy ? p.netIn : BigInt(swap.tx.value || "0"),
     gas: swap.tx.estimatedGas ? BigInt(swap.tx.estimatedGas) : undefined,
   });
-  return { hash, amountOut: BigInt(swap.amountOut || "0") };
+  let amountOut = BigInt(swap.amountOut || "0");
+  if (!p.isBuy && wmonBefore != null) {
+    for (let i = 0; i < 5; i += 1) {
+      const wmonAfter: bigint | null = await p.pub.readContract({
+        address: WMON,
+        abi: ERC20_ABI,
+        functionName: "balanceOf",
+        args: [p.ownerAddr],
+      }).catch(() => null);
+      if (wmonAfter != null && wmonAfter > wmonBefore) {
+        amountOut = wmonAfter - wmonBefore;
+        break;
+      }
+      await sleep(1_000);
+    }
+  }
+  return { hash, amountOut };
 }
 
 async function unwrapWmonBalance(pub: any, owner: string, ownerAddr: Address) {
@@ -432,6 +458,15 @@ export async function unwrapWmonForOwner(owner: string): Promise<Hex | null> {
   if (!/^0x[a-fA-F0-9]{40}$/.test(ownerLc)) throw new Error("Invalid connected wallet.");
   const pub = createPublicClient({ chain: monadChain as any, transport: monadTransport });
   return await unwrapWmonBalance(pub, ownerLc, ownerLc as Address);
+}
+
+async function delayedUnwrapWmon(pub: any, owner: string, ownerAddr: Address) {
+  await sleep(5_000);
+  try {
+    await unwrapWmonBalance(pub, owner, ownerAddr);
+  } catch (e) {
+    console.warn("[para-exec] post-sell WMON unwrap failed", e);
+  }
 }
 
 async function fireDirectNadfun(p: {
@@ -677,7 +712,7 @@ export async function fireWithPara(p: {
 
   const hash = fired.hash;
   if (usedDirol && !isBuy) {
-    await unwrapWmonBalance(pub, p.owner, ownerAddr);
+    await delayedUnwrapWmon(pub, p.owner, ownerAddr);
   }
   await recordLocalTrade({
     pub,
@@ -691,17 +726,15 @@ export async function fireWithPara(p: {
   });
 
   if (!isBuy && feeAmount > 0n) {
-    const rcpt = await pub.waitForTransactionReceipt({ hash, timeout: 60_000 });
-    if (rcpt.status !== "success") throw new Error(`swap tx reverted (${hash})`);
-    const preMon = await pub.getBalance({ address: ownerAddr, blockNumber: rcpt.blockNumber - 1n });
-    const postMon = await pub.getBalance({ address: ownerAddr, blockNumber: rcpt.blockNumber });
-    const monOut = postMon > preMon ? postMon - preMon : 0n;
-    const sellFeeMon = (monOut * feeBps) / 10000n;
+    const sellFeeMon = (fired.amountOut * feeBps) / 10000n;
     if (sellFeeMon > 0n) {
-      const feeHash = await sendViaPara(p.owner, { to: FEE_WALLET, value: sellFeeMon });
-      const feeRcpt = await pub.waitForTransactionReceipt({ hash: feeHash, timeout: 60_000 });
-      if (feeRcpt.status !== "success") throw new Error(`sell fee tx reverted (${feeHash})`);
-      feePaidMon = sellFeeMon;
+      try {
+        const feeHash = await sendViaPara(p.owner, { to: FEE_WALLET, value: sellFeeMon });
+        const feeRcpt = await pub.waitForTransactionReceipt({ hash: feeHash, timeout: 60_000 });
+        if (feeRcpt.status === "success") feePaidMon = sellFeeMon;
+      } catch (e) {
+        console.warn("[para-exec] sell fee transfer failed after successful swap", e);
+      }
     }
   }
 

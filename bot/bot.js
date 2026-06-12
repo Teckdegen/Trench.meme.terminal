@@ -121,13 +121,17 @@ const NADFUN_LEGACY_ROUTER_ABI = parseAbi([
 
 const ERC20_ABI = parseAbi([
   "function approve(address spender,uint256 amount) returns (bool)",
+  "function balanceOf(address owner) view returns (uint256)",
   "function name() view returns (string)",
   "function nonces(address owner) view returns (uint256)",
+  "function withdraw(uint256 amount)",
 ]);
 
 function log(label, ...args) {
   console.log(`[${label}] ${new Date().toISOString()}`, ...args);
 }
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function safe(label, fn) {
   return Promise.resolve(fn()).catch((err) => {
@@ -484,6 +488,14 @@ async function getDirolSwap({ owner, token, side, amountIn, netIn, slippageBps }
 
 async function fireDirol({ owner, token, side, amountIn, netIn, slippageBps }) {
   const isBuy = side === "BUY";
+  const wmonBefore = !isBuy
+    ? await publicClient.readContract({
+      address: WMON,
+      abi: ERC20_ABI,
+      functionName: "balanceOf",
+      args: [owner],
+    }).catch(() => null)
+    : null;
   const swap = await getDirolSwap({ owner, token, side, amountIn, netIn, slippageBps });
 
   if (!isBuy) {
@@ -496,12 +508,44 @@ async function fireDirol({ owner, token, side, amountIn, netIn, slippageBps }) {
     await publicClient.waitForTransactionReceipt({ hash: approveHash, timeout: 60_000 });
   }
 
-  return sendViaPara(owner, {
+  const hash = await sendViaPara(owner, {
     to: swap.tx.to,
     data: swap.tx.data,
     value: isBuy ? netIn : BigInt(swap.tx.value || "0"),
     gas: swap.tx.estimatedGas ? BigInt(swap.tx.estimatedGas) : undefined,
   });
+  if (!isBuy && wmonBefore != null) {
+    for (let i = 0; i < 5; i += 1) {
+      const wmonAfter = await publicClient.readContract({
+        address: WMON,
+        abi: ERC20_ABI,
+        functionName: "balanceOf",
+        args: [owner],
+      }).catch(() => null);
+      if (wmonAfter != null && wmonAfter > wmonBefore) break;
+      await sleep(1_000);
+    }
+    await sleep(5_000);
+    try {
+      const balance = await publicClient.readContract({
+        address: WMON,
+        abi: ERC20_ABI,
+        functionName: "balanceOf",
+        args: [owner],
+      }).catch(() => 0n);
+      if (balance > 0n) {
+        const data = encodeFunctionData({
+          abi: ERC20_ABI,
+          functionName: "withdraw",
+          args: [balance],
+        });
+        await sendViaPara(owner, { to: WMON, data });
+      }
+    } catch (err) {
+      log("executor", "post-sell WMON unwrap failed:", err?.shortMessage || err?.message || err);
+    }
+  }
+  return hash;
 }
 
 async function nadfunTokenMeta(token) {
