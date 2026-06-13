@@ -22,6 +22,11 @@ export const VERIFIED_BADGE =
 export const MON_LOGO =
   "https://pbs.twimg.com/profile_images/1967693862559698944/XTfCXXGa_400x400.jpg";
 
+// Official socials — shown in the landing page footer. Update to the real
+// handles before launch.
+export const APP_X_URL = "https://x.com/trenchmem";
+export const APP_TELEGRAM_URL = "https://t.me/trenchmeme";
+
 // Official announcement handle. Any post from this account is broadcast
 // to every user's alerts inbox AND pinned at the top of the social feed
 // until a newer one is posted. Match is case-insensitive.

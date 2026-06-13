@@ -3,9 +3,10 @@
 // a fixed container, so the sidebar/topbar/bubbles never peek through.
 
 import { createFileRoute } from "@tanstack/react-router";
-import { ArrowUpRight, Dices, TrendingUp } from "lucide-react";
-import { APP_NAME, APP_LOGO } from "@/lib/brand";
+import { ArrowUpRight, Twitter, Send } from "lucide-react";
+import { APP_NAME, APP_LOGO, APP_X_URL, APP_TELEGRAM_URL } from "@/lib/brand";
 import { useDocumentTitle } from "@/lib/useDocumentTitle";
+import { useLatestTradeFeed } from "@/lib/discovery-feed";
 
 const LANDING_BG =
   "https://www.image2url.com/r2/default/images/1781284346702-ef70b66f-8264-40da-b3fa-3215a77f7153.jpg";
@@ -77,21 +78,20 @@ function Landing() {
         </main>
 
         {/* ── Section 2: Dawn style rows — pure vibes, no feature lists ── */}
-        <section className="px-5 sm:px-10 py-20 bg-black/75 backdrop-blur-sm">
+        <section className="px-5 sm:px-10 py-16 bg-black/75 backdrop-blur-sm">
           <h2
             className="text-center font-black tracking-tight leading-tight text-[#d6d3d1]"
-            style={{ fontSize: "clamp(26px, 3.6vw, 44px)" }}
+            style={{ fontSize: "clamp(24px, 3.2vw, 38px)" }}
           >
-            The <span className="text-[#a855f7] italic">degen</span> way
-            <br className="hidden sm:block" /> to play.
+            The <span className="text-[#a855f7] italic">degen</span> way to play.
           </h2>
 
-          <div className="mt-12 max-w-4xl mx-auto rounded-3xl border border-white/10 overflow-hidden divide-y divide-white/10">
+          <div className="mt-10 max-w-3xl mx-auto rounded-3xl border border-white/10 overflow-hidden divide-y divide-white/10">
             <VibeRow
               chip="The trenches"
               title="Trade the memes"
               body="Every token on Monad, the moment it exists."
-              panel={<PanelTerminal />}
+              panel={<PanelLatestTrades />}
             />
             <VibeRow
               chip="The casino"
@@ -108,52 +108,29 @@ function Landing() {
           </div>
         </section>
 
-        {/* ── Section 3: Two doors ── */}
-        <section className="px-5 sm:px-10 pb-20 bg-black/75">
-          <div className="max-w-4xl mx-auto grid sm:grid-cols-2 gap-5">
-            <a
-              href="/meme"
-              className="group rounded-3xl border border-white/10 bg-[#0a0511]/90 p-8 hover:border-[#a855f7]/60 transition-colors"
-              style={{ boxShadow: "0 20px 60px rgba(0,0,0,0.5)" }}
-            >
-              <span className="size-12 rounded-2xl bg-[#a855f7]/20 grid place-items-center">
-                <TrendingUp className="size-6 text-[#c084fc]" />
-              </span>
-              <h2 className="mt-5 text-white font-black text-2xl tracking-tight">
-                Trade memes
-              </h2>
-              <p className="mt-2 text-sm text-[#a8a29e] leading-relaxed">
-                Every token on Monad, live in one terminal.
-              </p>
-              <span className="mt-5 inline-flex items-center gap-1.5 text-sm font-bold text-[#c084fc] group-hover:text-white transition-colors">
-                Enter the trenches <ArrowUpRight className="size-4" />
-              </span>
-            </a>
-
-            <div
-              className="rounded-3xl border border-white/10 bg-[#0a0511]/90 p-8"
-              style={{ boxShadow: "0 20px 60px rgba(0,0,0,0.5)" }}
-            >
-              <span className="size-12 rounded-2xl bg-[#a855f7]/20 grid place-items-center">
-                <Dices className="size-6 text-[#c084fc]" />
-              </span>
-              <h2 className="mt-5 text-white font-black text-2xl tracking-tight">
-                Trench the odds
-              </h2>
-              <p className="mt-2 text-sm text-[#a8a29e] leading-relaxed">
-                PvP casino. Winner takes the pot.
-              </p>
-              <span className="mt-5 inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide px-2.5 py-1 rounded-full bg-[#a855f7]/20 text-[#c084fc]">
-                Coming soon
-              </span>
-            </div>
-          </div>
-        </section>
-
-        {/* Footer strip */}
+        {/* Footer — socials */}
         <footer className="mt-auto px-6 sm:px-10 py-6 flex items-center justify-between text-[12px] text-white/40 bg-black/75">
           <span>© {new Date().getFullYear()} {APP_NAME}</span>
-          <span>Built on Monad</span>
+          <div className="flex items-center gap-2">
+            <a
+              href={APP_X_URL}
+              target="_blank"
+              rel="noreferrer"
+              aria-label="X"
+              className="size-9 grid place-items-center rounded-full bg-white/5 hover:bg-white/10 text-white/60 hover:text-white transition-colors"
+            >
+              <Twitter className="size-4" />
+            </a>
+            <a
+              href={APP_TELEGRAM_URL}
+              target="_blank"
+              rel="noreferrer"
+              aria-label="Telegram"
+              className="size-9 grid place-items-center rounded-full bg-white/5 hover:bg-white/10 text-white/60 hover:text-white transition-colors"
+            >
+              <Send className="size-4" />
+            </a>
+          </div>
         </footer>
       </div>
     </div>
@@ -167,38 +144,65 @@ function VibeRow({
 }: { chip: string; title: string; body: string; panel: React.ReactNode }) {
   return (
     <div className="grid md:grid-cols-2 bg-[#070110]/80">
-      <div className="px-6 sm:px-8 py-8 flex flex-col justify-center">
-        <span className="h-7 px-3 rounded-full border border-white/15 text-white/60 text-[11px] font-bold uppercase tracking-wide inline-flex items-center justify-center w-fit">
+      <div className="px-6 sm:px-7 py-6 flex flex-col justify-center">
+        <span className="h-6 px-2.5 rounded-full border border-white/15 text-white/60 text-[10px] font-bold uppercase tracking-wide inline-flex items-center justify-center w-fit">
           {chip}
         </span>
-        <h3 className="mt-4 text-white font-black text-2xl tracking-tight">{title}</h3>
-        <p className="mt-2 text-sm text-[#a8a29e] leading-relaxed max-w-sm">{body}</p>
+        <h3 className="mt-3 text-white font-black text-xl tracking-tight">{title}</h3>
+        <p className="mt-1.5 text-[13px] text-[#a8a29e] leading-relaxed max-w-sm">{body}</p>
       </div>
-      <div className="px-6 sm:px-8 py-8 md:border-l border-white/10 grid place-items-center">
+      <div className="px-6 sm:px-7 py-6 md:border-l border-white/10 grid place-items-center">
         {panel}
       </div>
     </div>
   );
 }
 
-// Abstract terminal rows — fake token list with green/red pills
-function PanelTerminal() {
-  const rows = [
-    { w: "60%", up: true,  pct: "+341%" },
-    { w: "46%", up: true,  pct: "+89%" },
-    { w: "52%", up: false, pct: "-12%" },
-  ];
+// LIVE — top 3 from Nad.fun's latest trades feed (same source as the
+// terminal's Latest Trades column, polls every 5s).
+function PanelLatestTrades() {
+  const { rows } = useLatestTradeFeed();
+  const top3 = rows.slice(0, 3);
+
+  if (top3.length === 0) {
+    return (
+      <div className="w-full max-w-[300px] space-y-2.5">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div key={i} className="flex items-center gap-3 animate-pulse">
+            <span className="size-7 rounded-full bg-white/10 shrink-0" />
+            <span className="h-2.5 w-24 rounded-full bg-white/10" />
+            <span className="ml-auto h-2.5 w-10 rounded-full bg-white/10" />
+          </div>
+        ))}
+      </div>
+    );
+  }
+
   return (
-    <div className="w-full max-w-[320px] space-y-3">
-      {rows.map((r, i) => (
-        <div key={i} className="flex items-center gap-3">
-          <span className="size-7 rounded-full bg-[#a855f7]/25 shrink-0" />
-          <span className="h-2.5 rounded-full bg-white/10" style={{ width: r.w }} />
-          <span className={`ml-auto text-[11px] font-mono font-bold ${r.up ? "text-[#4ade80]" : "text-[#f87171]"}`}>
-            {r.pct}
-          </span>
-        </div>
-      ))}
+    <div className="w-full max-w-[300px] space-y-2.5">
+      {top3.map((r) => {
+        const pct = r.priceChange24h;
+        const up = (pct ?? 0) >= 0;
+        return (
+          <a
+            key={r.address}
+            href={`/token/${r.address}`}
+            className="flex items-center gap-3 group"
+          >
+            {r.imageUri ? (
+              <img src={r.imageUri} alt="" className="size-7 rounded-full object-cover shrink-0" />
+            ) : (
+              <span className="size-7 rounded-full bg-[#a855f7]/25 shrink-0" />
+            )}
+            <span className="text-[13px] font-bold text-white truncate group-hover:text-[#c084fc] transition-colors">
+              {r.symbol}
+            </span>
+            <span className={`ml-auto text-[11px] font-mono font-bold ${up ? "text-[#4ade80]" : "text-[#f87171]"}`}>
+              {pct != null ? `${up ? "+" : ""}${pct.toFixed(1)}%` : "live"}
+            </span>
+          </a>
+        );
+      })}
     </div>
   );
 }
@@ -231,11 +235,11 @@ function PanelCasino() {
 // Abstract payout panel — winner row + settle receipts
 function PanelPot() {
   return (
-    <div className="w-full max-w-[320px] space-y-3">
-      <div className="flex items-center gap-3 rounded-2xl bg-[#a855f7]/15 border border-[#a855f7]/40 px-4 py-3">
+    <div className="w-full max-w-[300px] space-y-2.5">
+      <div className="flex items-center gap-3 rounded-2xl bg-[#a855f7]/15 border border-[#a855f7]/40 px-4 py-2.5">
         <span className="size-7 rounded-full bg-[#a855f7]/40 shrink-0" />
-        <span className="text-sm text-white font-bold">@mona wins</span>
-        <span className="ml-auto text-sm font-mono font-bold text-[#4ade80]">+3,420 MON</span>
+        <span className="text-[13px] text-white font-bold">@mona wins</span>
+        <span className="ml-auto text-[13px] font-mono font-bold text-[#4ade80]">+3,420 MON</span>
       </div>
       {["paid from the pool", "settled onchain"].map((t, i) => (
         <div key={t} className="flex items-center gap-2.5 px-1">
