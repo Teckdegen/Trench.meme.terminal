@@ -209,13 +209,68 @@ exact rule the contract enforces.
 | 19 | **Token Battles** | Pool | Two memecoins, 5 minute price race. Settled by % price change from an onchain readable oracle snapshot (TWAP from the DEX pools at open and close blocks — NOT our API; must be verifiable). |
 | 20 | **Candle Color** | Pool | Next 1 minute candle of a hot token: green or red. Same TWAP snapshot technique, 60s rounds forever. |
 | 21 | **Pump Roulette** | Pool | 8 trending tokens, bet which pumps hardest in 10 minutes. |
-| 22 | **Wallet Wars** | Duel | Two traders stake on who has better realized PnL% over 24h, settled from onchain trade data. |
-| 23 | **MC Milestone Race** | Pool | Which new launch graduates first. Long running pool, settled by the bonding curve contract's own graduation event. |
+| 22 | **Dump Derby** | Pool | The evil twin: 8 trending tokens, bet which one DUMPS hardest in 10 minutes. Degens love betting the downside. |
+| 23 | **Wallet Wars** | Duel | Two traders stake on who has better realized PnL% over 24h, settled from onchain trade data. |
+| 24 | **MC Milestone Race** | Pool | Which new launch graduates first. Long running pool, settled by the bonding curve contract's own graduation event. |
+| 25 | **Volume Clash** | Pool | Two tokens, 10 minutes: which prints more swap volume. Settled by summing the DEX pool's swap events between open and close blocks. |
+| 26 | **Over / Under** | Pool | A line is set on a token's % move ("CHOG +5% in 15 min"). Bet over or under, pari-mutuel between the two sides. The line that splits the pool evenly is the fair line; rotate hot tokens all day. |
+| 27 | **Range Sniper** | Pool | Pick the price bracket a token closes in after 10 min (e.g. <−5%, −5..0, 0..+5, +5..+15, >+15). Narrower brackets carry higher pari-mutuel weight. Roulette, but the wheel is the chart. |
+| 28 | **Whale Watch** | Pool | Bet whether the next swap above X MON in a chosen pool is a BUY or a SELL. Settles on the next qualifying swap event. Pure onchain voyeurism. |
+| 29 | **Survival Index** | Pool | 5 fresh launches, bet which is the LAST one still above its launch price after 24h. The battle royale of rugs. |
 
-NOTE on Wave 6: settlement must read **onchain state** (pool reserves, curve
-events), never our own market API, or the games stop being trustless. Price
-games use two block anchored TWAP snapshots; the settle function recomputes
-from chain data anyone can verify.
+NOTE on Wave 6: settlement must read **onchain state** (pool reserves, swap
+events, curve events), never our own market API, or the games stop being
+trustless. Price games use two block anchored TWAP snapshots; volume games sum
+swap events between anchored blocks; the settle function recomputes from chain
+data anyone can verify.
+
+### Wave 7 — Poker: always on Hold'em cash tables (the crown jewel)
+
+The purest PvP game in existence: 100% of the money on the table belongs to
+players, the house rakes pots. Persistent tables that never close — sit down
+with a stack, play, stand up whenever.
+
+| # | Game | Format |
+|---|------|--------|
+| 30 | **Heads Up Hold'em** | 2 seat cash tables. Ship FIRST — two players makes the hidden card problem and the turn logic vastly simpler. |
+| 31 | **6 Max Hold'em** | Standard cash tables, multiple stake tiers (e.g. 1/2, 5/10, 25/50 MON blinds). |
+| 32 | **Sit & Go tournaments** | 6 players, fixed buy in, blinds escalate, last stack takes the prize pool. Reuses the cash table engine. |
+| 33 | **Omaha** | Same engine, 4 hole cards. Free once Hold'em works. |
+
+**Seat = Position NFT.** Sitting down escrows your buy in into the Vault and
+mints a Seat NFT encoding table id, seat index and current stack. Standing up
+burns it and withdraws the stack. The seat is transferable while sitting —
+selling a live seat mid session is allowed and very on brand.
+
+**Betting flow.** Turn based contract calls: `fold / check / call / bet(x) /
+raise(x)`, enforced order, per action clock (suggest 30s; timeout = auto
+check/fold so a disconnect never stalls the table). Blinds posted
+automatically each hand by the contract. Side pots computed onchain (this is
+the fiddly part — test exhaustively). Rake per pot, capped like real card
+rooms (e.g. 3% capped at 5 MON), no rake on hands that end preflop ("no flop,
+no drop").
+
+**The hidden card problem.** Hole cards must stay secret during the hand but
+be provably un-rigged. Three schemes, in order of trust minimization:
+
+1. **Mental poker (fully trustless).** Players cooperatively encrypt and
+   shuffle the deck; no party ever knows a card until its reveal. Gold
+   standard, but interaction heavy and a disconnecting player stalls the
+   table. Viable for heads up; painful for 6 max.
+2. **zk shuffle dealer (recommended target).** A dealer service shuffles and
+   deals encrypted cards with zero knowledge proofs that the shuffle was a
+   valid permutation of a standard deck (zkHoldem style). Smooth UX,
+   cryptographic fairness, works at 6 max. This is the production scheme.
+3. **Commit reveal dealer (pragmatic v1).** Dealer commits `hash(shuffled
+   deck ‖ salt)` before the hand; at hand end the full deck is revealed and
+   verified against the commitment, and every dealt card must match. Players
+   trust the dealer not to peek DURING the hand, but any rigging is provable
+   after the fact and slashes the dealer's bond. Acceptable to launch heads
+   up tables while the zk scheme is built; the dealer posts a slashable bond
+   ≥ the table's max buy in.
+
+**Rollout inside Wave 7:** heads up cash (scheme 3, bonded dealer) → zk
+shuffle dealer swap in → 6 max cash → Sit & Go → Omaha.
 
 ### Social / format layer (not games, multipliers on everything)
 
@@ -316,6 +371,7 @@ permissionless; it is a convenience, not a trust assumption.
 | 4 | Crash + the ticket secondary market UI (PositionNFT transfers). |
 | 5 | Waves 3–4 games, one per week. Tournaments + cabal wars. |
 | 6 | Card engines (Wave 5), trench native games (Wave 6), cosmetic NFT decks, seasons. |
+| 7 | Poker (Wave 7): heads up cash with bonded dealer → zk shuffle → 6 max → Sit & Go → Omaha. |
 | — | Audit gate before lifting launch bet caps. |
 
 ### Config defaults (tune later, ship with these)
