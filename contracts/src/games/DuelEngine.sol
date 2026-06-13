@@ -7,14 +7,15 @@ import {IVault} from "../interfaces/IVault.sol";
 import {IPositionNFT} from "../interfaces/IPositionNFT.sol";
 import {Entropy} from "../lib/Entropy.sol";
 
-/// @notice Generic 1v1 duel engine. Concrete games (Coinflip, Dice, War…) only
+/// @notice Generic 1v1 duel engine. Concrete games (Moon or Doom, Send It,
+///         Alpha Call…) only
 ///         implement `_resolve` — the matching, escrow, commit-reveal, payout,
 ///         rake, expiry and ticket lifecycle all live here.
 ///
 ///         Stakes need NOT be equal: an open challenge matches any acceptor
 ///         whose stake is within MATCH_TOLERANCE_BPS. Unequal stakes ARE the
 ///         odds — the resolver receives both stakes and decides the winner with
-///         stake-weighted fairness (see Coinflip). Winner takes the pot minus
+///         stake-weighted fairness (see Moon or Doom). Winner takes the pot minus
 ///         rake; the house always takes its cut on a settled duel.
 abstract contract DuelEngine is IGame, ReentrancyGuard {
     IVault public immutable vault;

@@ -7,7 +7,7 @@ import {IGame} from "../interfaces/IGame.sol";
 import {IVault} from "../interfaces/IVault.sol";
 import {IPositionNFT} from "../interfaces/IPositionNFT.sol";
 
-/// @notice MON Up / Down — the ONE token game. Deliberately rigid:
+/// @notice Pump or Dump — MON Up/Down, the ONE token game. Deliberately rigid:
 ///           - only asset: MON
 ///           - only market: the 5-minute round, back to back forever
 ///           - exactly 5 stake tiers: 5 / 10 / 25 / 50 / 100 MON
@@ -36,7 +36,7 @@ import {IPositionNFT} from "../interfaces/IPositionNFT.sol";
 ///         round. Players who were left unmatched are included in the resolve
 ///         as full refunds. A round the bot never resolves can be reclaimed by
 ///         players after a timeout (see `reclaim`).
-contract UpDown is IGame, ReentrancyGuard, Ownable {
+contract PumpOrDump is IGame, ReentrancyGuard, Ownable {
     IVault public immutable vault;
     IPositionNFT public immutable tickets;
     address public resolver; // the trench bot
@@ -97,7 +97,7 @@ contract UpDown is IGame, ReentrancyGuard, Ownable {
     }
 
     function gameId() public pure returns (bytes32) {
-        return "updown";
+        return "pumpdump";
     }
 
     function _roundKey(uint256 id) internal view returns (bytes32) {

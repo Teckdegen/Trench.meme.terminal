@@ -1,7 +1,7 @@
 import {expect} from "chai";
 import {ethers} from "hardhat";
 
-describe("Coinflip duel", () => {
+describe("Moon or Doom duel", () => {
   async function deploy() {
     const [owner, house, alice, bob] = await ethers.getSigners();
     const registry = await (await ethers.getContractFactory("GameRegistry")).deploy(owner.address);
@@ -13,7 +13,7 @@ describe("Coinflip duel", () => {
     const tickets = await (await ethers.getContractFactory("PositionNFT")).deploy(
       await registry.getAddress(),
     );
-    const flip = await (await ethers.getContractFactory("Coinflip")).deploy(
+    const flip = await (await ethers.getContractFactory("MoonOrDoom")).deploy(
       await vault.getAddress(),
       await tickets.getAddress(),
     );

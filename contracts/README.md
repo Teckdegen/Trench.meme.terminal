@@ -23,11 +23,11 @@ src/
 │   └── Entropy.sol          duel commit-reveal + pool blockhash randomness
 ├── games/
 │   ├── DuelEngine.sol       generic 1v1 (unequal stakes, ±35% match band)
-│   ├── Coinflip.sol         stake-weighted fair coin
-│   ├── DiceDuel.sol         stake-weighted dice
+│   ├── MoonOrDoom.sol       50/50 flip (stake-weighted fair)
+│   ├── SendIt.sol           high-roll dice duel (stake-weighted)
 │   ├── PoolEngine.sol       generic pari-mutuel rounds
-│   ├── Roulette.sol         shared-spin pool game
-│   ├── UpDown.sol           MON-only thin escrow; bot resolves offchain
+│   ├── DegenWheel.sol       roulette — shared-spin pool game
+│   ├── PumpOrDump.sol       MON up/down thin escrow; bot resolves offchain
 │   ├── LobbyEngine.sol      generic equal-stake lobby (fill → blockhash draw)
 │   ├── AlphaCall.sol        Number Nuke — closest hidden call, collision=house
 │   ├── Capper.sol           Liar's Dice — hidden dice + bluff bidding
@@ -107,9 +107,9 @@ npm run deploy:monad  # hardhat run scripts/deploy.ts --network monad
 Poker needs a dealer + (for zk) the generated verifiers — deploy those once the
 dealer/circuits are ready.
 
-## MON Up/Down: offchain game, onchain money
+## Pump or Dump (MON up/down): offchain game, onchain money
 
-Up/Down is FULLY OFFCHAIN except the money. `UpDown.sol` is a thin escrow over
+Pump or Dump is FULLY OFFCHAIN except the money. `PumpOrDump.sol` is a thin escrow over
 the Vault — it only takes bets and pays out. All the work (matching every UP
 bet to an equal-tier DOWN bet, drawing the line from the live MON price, and
 the win math) runs in the trench bot offchain, so a single round can hold a
@@ -135,7 +135,7 @@ This is a complete, coherent reference architecture. Before real-money size:
 - The EC re-encryption gadget + Poseidon deck commitments in `shuffle.circom`
   are specced as TODOs — import audited BabyJubJub libs, do a real phase-2
   ceremony, generate the verifier.
-- `Roulette` settles straight-number bets by exact pick match; outside-bet
+- `DegenWheel` (roulette) settles straight-number bets by exact pick match; outside-bet
   payout (red/black/odd/even) is a documented thin extension of `PoolEngine._settle`.
 - `PokerTable._award` rake wiring has a deploy-time choice (per-hand bucket vs
   table bucket) flagged inline.

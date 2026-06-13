@@ -3,7 +3,8 @@ pragma solidity ^0.8.24;
 
 import {PoolEngine} from "./PoolEngine.sol";
 
-/// @notice European roulette as a pari-mutuel pool. One shared spin per round.
+/// @notice Degen Wheel — European roulette as a pari-mutuel pool. One shared
+///         spin per round.
 ///         The wheel has 37 pockets (0..36). Picks are encoded so the contract
 ///         can both validate them and assign odds-weighting:
 ///
@@ -18,7 +19,7 @@ import {PoolEngine} from "./PoolEngine.sol";
 ///         Weight = stake * 36 / numbersCovered, so a straight number carries
 ///         36x the per-MON weight of red/black. Absolute payout still floats
 ///         with the pool (pari-mutuel), but RELATIVE payouts respect true odds.
-contract Roulette is PoolEngine {
+contract DegenWheel is PoolEngine {
     // Standard European red pockets.
     uint64 internal constant RED_MASK = 0x00; // computed in _isRed
 
@@ -27,7 +28,7 @@ contract Roulette is PoolEngine {
     {}
 
     function gameId() public pure override returns (bytes32) {
-        return "roulette";
+        return "degenwheel";
     }
 
     function _validPick(uint64 pick) internal pure override returns (bool) {

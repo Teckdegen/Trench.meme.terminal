@@ -208,46 +208,46 @@ exact rule the contract enforces.
 
 | # | Game | Engine | Resolution |
 |---|------|--------|-----------|
-| 1 | **Dice Duel** | Duel | Each player's roll = `entropy % 10000` salted with their address. Higher wins. Tie → reroll with nonce++. |
-| 2 | **Coinflip / War** | Duel | One bit / one card from entropy per player. Higher card wins; war (tie) → reroll. |
-| 3 | **RPS** | Duel | The commit IS the move: `commit = keccak(move ‖ salt)`. Classic textbook contract. Tie → settles as a push: rake taken, remainder returned. |
+| 1 | **Send It** (Dice) | Duel | Each player's roll = `entropy % 10000` salted with their address. Higher sends it. Tie → reroll with nonce++. |
+| 2 | **Moon or Doom** (Coinflip) | Duel | One bit from entropy per player; call MOON or DOOM, opposite sides match. Stake-weighted 50/50. |
+| 3 | **Ape Jeet Rug** (RPS) | Duel | Trench rock-paper-scissors — ape beats jeet, jeet beats rug, rug beats ape. The commit IS the throw: `commit = keccak(throw ‖ salt)`. Tie → push: rake taken, remainder returned. |
 
 ### Wave 2 — the live tables
 
 | # | Game | Engine | Resolution |
 |---|------|--------|-----------|
-| 4 | **Roulette** | Pool | Shared spin every 60s (only if ≥2 bettors with opposing outcomes). `result = entropy % 37`. Picks: straight, red/black, odd/even, dozens, columns. Pari-mutuel weights as in §2. |
-| 5 | **Crash** | Pool | Bust point derived from entropy with median ~2x distribution: `bust = max(1, (2^32 / (entropy % 2^32)) × house_curve)`. Players cash out onchain (tx must land before bust block). Busters' stakes split among cashed out players weighted by cashout multiplier. |
+| 4 | **Degen Wheel** (Roulette) | Pool | Shared spin every 60s (only if ≥2 bettors with opposing outcomes). `result = entropy % 37`. Picks: straight, red/black, odd/even, dozens, columns. Pari-mutuel weights as in §2. |
+| 5 | **Rug Run** (Crash) | Pool | Ride the pump, exit before the rug. Bust point from entropy, median ~2x: `bust = max(1, (2^32 / (entropy % 2^32)) × house_curve)`. Cash out onchain before the bust block. Busters' stakes split among those who got out, weighted by cashout multiplier. |
 
 ### Wave 3 — cheap engine clones
 
 | # | Game | Engine | Resolution |
 |---|------|--------|-----------|
-| 6 | **Limbo Duel** | Duel | Both pick target multiplier at bet time. Shared entropy gives one roll `r`. Survivors = players whose target ≤ r. Survivor with the higher target wins; both bust → higher target loses (punish greed) or refund — pick one and document it. |
-| 7 | **Plinko Race** | Duel (lobby 2–8) | Same board seed, one ball path per player derived from `entropy ‖ address`. Best slot multiplier takes the pot. Ties split. |
-| 8 | **Jackpot Wheel** | Pool | One pot. `winner` drawn with probability proportional to stake. The purest pari-mutuel. |
-| 9 | **Lightning Lottery** | Pool | 60 second micro lottery, one winner takes pool minus rake. Runs forever. |
+| 6 | **Moonshot** (Limbo) | Duel | Both call a target multiplier at bet time. Shared entropy gives one roll `r`. Survivors = those whose target ≤ r; higher surviving target wins. Both overshoot → house takes the pot. |
+| 7 | **Bag Drop** (Plinko) | Duel (lobby 2–8) | Drop your bag down the same pegboard, one ball path per player from `entropy ‖ address`. Best slot multiplier takes the pot. Ties split. |
+| 8 | **Mega Bag** (Jackpot) | Pool | One pot. Winner drawn with probability proportional to stake. The purest pari-mutuel. |
+| 9 | **Flash Lotto** (Lottery) | Pool | 60-second micro lottery, one winner takes the pool minus rake. Runs forever. |
 
 ### Wave 4 — depth
 
 | # | Game | Engine | Resolution |
 |---|------|--------|-----------|
-| 10 | **Mines Duel** | Duel | Identical hidden 5×5 board (same entropy), each player picks tiles until they hit a bomb (picks submitted as a committed sequence to keep it one tx). Most safe tiles wins. |
-| 11 | **Keno** | Pool | 10 numbers drawn from entropy. Tickets weighted by match count table. Best matches split the pot. |
-| 12 | **Tower Duel** | Duel | Mines variant: same tower, committed climb sequences, higher floor wins. |
-| 13 | **Last Degen Standing** | Duel (lobby 6–10) | Elimination each round from entropy until one survivor. Pot to survivor. |
-| 14 | **Sic Bo** | Pool | Three dice from entropy, standard bet board, pari-mutuel weights. |
+| 10 | **Rug Sweeper** (Mines) | Duel | Identical hidden 5×5 field of rugs (same entropy); each player picks tiles until they hit a rug (committed sequence, one tx). Most safe tiles wins. |
+| 11 | **Number Bags** (Keno) | Pool | 10 numbers drawn from entropy. Tickets weighted by match-count table. Best matches split the pot. |
+| 12 | **Moon Ladder** (Tower) | Duel | Climb the same ladder (committed climb sequences); whoever reaches the higher rung before a bad step wins. |
+| 13 | **Last Degen Standing** | Duel (lobby 6–10) | Elimination each round from entropy until one survivor. Pot to the survivor. |
+| 14 | **Triple Send** (Sic Bo) | Pool | Three dice from entropy, standard bet board, pari-mutuel weights. |
 
 ### Wave 5 — card engines
 
 | # | Game | Engine | Resolution |
 |---|------|--------|-----------|
-| 15 | **Blackjack Duel** | Duel | Same shoe from entropy. Both players play vs the deck (committed hit/stand strategy or turn based with short clocks). Closest to 21 without bust takes the pot. Push → rake taken, remainder returned. |
-| 16 | **Baccarat** | Pool | Standard coup dealt from entropy. Player pool vs Banker pool vs Tie pool, losing pools pay winning pool. |
-| 17 | **Video Poker Duel** | Duel | Same deck, one committed draw each, best 5 card hand wins. |
-| 18 | **Hi-Lo Ladder Duel** | Duel | Same card stream, committed guess sequences, longer correct streak wins. |
+| 15 | **21 or Rekt** (Blackjack) | Duel | Same shoe from entropy. Both play vs the deck (committed hit/stand or turn-based with short clocks). Closest to 21 without busting takes the pot. Push → rake taken, remainder returned. |
+| 16 | **Banker Battle** (Baccarat) | Pool | Standard coup dealt from entropy. Degen pool vs Banker pool vs Tie pool; losing pools pay the winning pool. |
+| 17 | **Draw Duel** (Video Poker) | Duel | Same deck, one committed draw each, best 5-card hand wins. |
+| 18 | **Hi or Rekt** (Hi-Lo) | Duel | Same card stream, committed higher/lower guess sequences; longer correct streak wins. |
 
-### Wave 6 — Up / Down (the ONLY token game)
+### Wave 6 — Pump or Dump (the ONLY token game)
 
 One price game, done perfectly. No token battles, no pump roulettes, no
 volume races — they dilute the casino. Up / Down is the whole category, and
@@ -260,7 +260,7 @@ it is deliberately rigid:
 
 | # | Game | Engine | How it works |
 |---|------|--------|--------------|
-| 19 | **MON Up / Down** | Tier matched round | Rounds run back to back, 5 minutes each. During the betting window you pick UP or DOWN and one of the 5 stake tiers. Bets are matched 1:1 against the opposite side at the same tier. The round can hold 100+ players — it is just many matched pairs sharing one line. |
+| 19 | **Pump or Dump** (MON up/down) | Tier matched round | Rounds run back to back, 5 minutes each. During the betting window you pick UP or DOWN and one of the 5 stake tiers. Bets are matched 1:1 against the opposite side at the same tier. The round can hold 100+ players — it is just many matched pairs sharing one line. |
 
 **FULLY OFFCHAIN game, onchain money.** This is the key architecture point:
 the contract (`UpDown.sol`) is *just a vault* — it takes bets and pays out.
@@ -304,18 +304,18 @@ once** — there are no onchain matching loops, just escrow in and payout out.
 correctly (same trust as any price feed). It cannot touch funds outside a
 round, cannot over-pay, and cannot rug.
 
-### Wave 7 — Poker: always on Hold'em cash tables (the crown jewel)
+### Wave 7 — Degen Poker: always-on Hold'em cash tables (the crown jewel)
 
 The purest PvP game in existence: 100% of the money on the table belongs to
 players, the house rakes pots. Persistent tables that never close — sit down
-with a stack, play, stand up whenever.
+with a stack, play, stand up whenever. Branded **Degen Poker**.
 
-| # | Game | Format |
-|---|------|--------|
-| 20 | **Heads Up Hold'em** | 2 seat cash tables. Ship FIRST — two players makes the hidden card problem and the turn logic vastly simpler. |
-| 21 | **6 Max Hold'em** | Standard cash tables, multiple stake tiers (e.g. 1/2, 5/10, 25/50 MON blinds). |
-| 22 | **Sit & Go tournaments** | 6 players, fixed buy in, blinds escalate, last stack takes the prize pool. Reuses the cash table engine. |
-| 23 | **Omaha** | Same engine, 4 hole cards. Free once Hold'em works. |
+| # | Table | Format |
+|---|-------|--------|
+| 20 | **Heads-Up** (Degen Poker) | 2-seat cash tables. Ship FIRST — two players makes the hidden-card problem and the turn logic vastly simpler. |
+| 21 | **6-Max** (Degen Poker) | Standard cash tables, multiple stake tiers (e.g. 1/2, 5/10, 25/50 MON blinds). |
+| 22 | **Send & Go** (Sit & Go) | 6 players, fixed buy-in, blinds escalate, last stack takes the prize pool. Reuses the cash-table engine. |
+| 23 | **Omaha** (Degen Poker) | Same engine, 4 hole cards. Free once Hold'em works. |
 
 **Seat = Position NFT.** Sitting down escrows your buy in into the Vault and
 mints a Seat NFT encoding table id, seat index and current stack. Standing up
@@ -492,7 +492,8 @@ Stack stays what the app already uses; the casino adds routes, not infra.
 - **Routes**:
   - `/casino` — lobby. Stake style card grid (purple/black skin), live counts
     (open duels, current pots, next spin countdown), wins ticker, global chat.
-  - `/casino/<game>` — game room. Duel games: challenge board (open
+  - `/casino/<game>` — game room (e.g. `/casino/sendit`, `/casino/degenwheel`,
+    `/casino/pumpdump`). Duel games: challenge board (open
     challenges, create with stake, accept, my duels, recent results). Pool
     games: shared table (betting window countdown, everyone's bets visible
     live, projected payout per pick, result history strip, verify link).
@@ -560,13 +561,13 @@ liveness role:
 
 | Phase | Deliverable |
 |-------|------------|
-| 1 | Foundry repo: Vault + PositionNFT + RandomBeacon + DuelEngine + DiceDuel. Full test suite. Monad testnet deploy. |
-| 2 | `/casino` lobby + dice challenge board reading pure chain state. Para signed bets. Verify panel. |
-| 3 | PoolEngine + Roulette (the flagship live table) + Lightning Lottery (engine reuse smoke test). |
-| 4 | Crash + the ticket secondary market UI (PositionNFT transfers). |
-| 5 | Waves 3–4 games, one per week. Tournaments + cabal wars. |
-| 6 | Card engines (Wave 5), Up / Down (Wave 6), cosmetic NFT decks, seasons. |
-| 7 | Poker (Wave 7): heads up cash with bonded dealer → zk shuffle → 6 max → Sit & Go → Omaha. |
+| 1 | Hardhat repo: Vault + PositionNFT + DuelEngine + Send It / Moon or Doom. Full test suite. Monad testnet deploy. |
+| 2 | `/casino` lobby + Send It challenge board reading pure chain state. Para signed bets. Verify panel. |
+| 3 | PoolEngine + Degen Wheel (the flagship live table) + Flash Lotto (engine reuse smoke test). |
+| 4 | Rug Run (Crash) + the ticket secondary market UI (PositionNFT transfers). |
+| 5 | Waves 3–4 + Wave 8 degen classics, one per week. Tournaments + cabal wars. |
+| 6 | Card engines (Wave 5), Pump or Dump (Wave 6), cosmetic NFT decks, seasons. |
+| 7 | Degen Poker (Wave 7): heads-up cash with bonded dealer → zk shuffle → 6-max → Send & Go → Omaha. |
 | — | Audit gate before lifting launch bet caps. |
 
 ### Config defaults (tune later, ship with these)

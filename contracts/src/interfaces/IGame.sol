@@ -5,7 +5,7 @@ pragma solidity ^0.8.24;
 ///         The registry only needs identity + a uniform "poke" so anyone can
 ///         drive a game's pending state transitions permissionlessly.
 interface IGame {
-    /// @return The stable string id of this game ("coinflip", "roulette"…).
+    /// @return The stable string id of this game ("moondoom", "degenwheel"…).
     function gameId() external view returns (bytes32);
 
     /// @notice Permissionless transition poke. Settles any round/duel that is

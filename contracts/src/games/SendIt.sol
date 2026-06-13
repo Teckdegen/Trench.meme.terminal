@@ -3,16 +3,16 @@ pragma solidity ^0.8.24;
 
 import {DuelEngine} from "./DuelEngine.sol";
 
-/// @notice Dice duel. Each player gets a roll in [0, 1e6) derived from the
-///         shared entropy salted by their address, BIASED by stake so the game
-///         stays fair under unequal stakes (same principle as Coinflip — a
-///         bigger stake buys a proportionally better expected roll). Higher
-///         roll wins; exact tie rerolls with a nonce.
-contract DiceDuel is DuelEngine {
+/// @notice Send It — the high-roll dice duel. Each player gets a roll derived
+///         from the shared entropy salted by their address, BIASED by stake so
+///         the game stays fair under unequal stakes (same principle as Moon or
+///         Doom — a bigger stake buys a proportionally better expected roll).
+///         Higher roll sends it; exact tie rerolls with a nonce.
+contract SendIt is DuelEngine {
     constructor(address vault_, address tickets_) DuelEngine(vault_, tickets_) {}
 
     function gameId() public pure override returns (bytes32) {
-        return "dice";
+        return "sendit";
     }
 
     function _resolve(Duel storage d, uint256 e) internal view override returns (uint8) {

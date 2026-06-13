@@ -35,18 +35,18 @@ async function main() {
   // ~60s betting window on Monad's 400ms blocks.
   const ROULETTE_BETTING_BLOCKS = 150;
 
-  const coinflip = await (await ethers.getContractFactory("Coinflip")).deploy(vaultAddr, ticketsAddr);
-  const dice = await (await ethers.getContractFactory("DiceDuel")).deploy(vaultAddr, ticketsAddr);
-  const roulette = await (await ethers.getContractFactory("Roulette")).deploy(
+  const moonOrDoom = await (await ethers.getContractFactory("MoonOrDoom")).deploy(vaultAddr, ticketsAddr);
+  const sendIt = await (await ethers.getContractFactory("SendIt")).deploy(vaultAddr, ticketsAddr);
+  const degenWheel = await (await ethers.getContractFactory("DegenWheel")).deploy(
     vaultAddr,
     ticketsAddr,
     ROULETTE_BETTING_BLOCKS,
   );
 
-  // MON Up/Down: thin escrow. All matching + line math is OFFCHAIN in the bot,
+  // Pump or Dump: thin escrow. All matching + line math is OFFCHAIN in the bot,
   // which calls resolve(...) with the MON price after 5 min. Scales to a
   // million players per round with zero onchain matching loops.
-  const upDown = await (await ethers.getContractFactory("UpDown")).deploy(
+  const pumpOrDump = await (await ethers.getContractFactory("PumpOrDump")).deploy(
     vaultAddr,
     ticketsAddr,
     resolverBot,
@@ -68,7 +68,7 @@ async function main() {
   );
 
   const games = [
-    coinflip, dice, roulette, upDown,
+    moonOrDoom, sendIt, degenWheel, pumpOrDump,
     alphaCall, diamondHands, chamber, knifeCatcher, exitScam, capper, gasWar, whaleThrone,
   ];
   for (const c of games) await c.waitForDeployment();
@@ -78,10 +78,10 @@ async function main() {
     registry: await registry.getAddress(),
     vault: vaultAddr,
     tickets: ticketsAddr,
-    coinflip: await coinflip.getAddress(),
-    dice: await dice.getAddress(),
-    roulette: await roulette.getAddress(),
-    upDown: await upDown.getAddress(),
+    moonOrDoom: await moonOrDoom.getAddress(),
+    sendIt: await sendIt.getAddress(),
+    degenWheel: await degenWheel.getAddress(),
+    pumpOrDump: await pumpOrDump.getAddress(),
     alphaCall: await alphaCall.getAddress(),
     diamondHands: await diamondHands.getAddress(),
     chamber: await chamber.getAddress(),
