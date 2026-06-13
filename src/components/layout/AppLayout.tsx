@@ -1,9 +1,35 @@
 import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
-import { useState, type ReactNode } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 
 export function AppLayout({ children }: { children: ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  // The marketing landing page ("/") owns the whole screen — no sidebar, no
+  // topbar, no padding. It renders its own full-bleed layout. (Track route
+  // client-side so SPA navigations flip the chrome on/off.)
+  const [pathname, setPathname] = useState(() =>
+    typeof window === "undefined" ? "/" : window.location.pathname,
+  );
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const update = () => setPathname(window.location.pathname);
+    window.addEventListener("popstate", update);
+    const origPush = history.pushState;
+    const origReplace = history.replaceState;
+    history.pushState = function (...args) { origPush.apply(this, args); update(); };
+    history.replaceState = function (...args) { origReplace.apply(this, args); update(); };
+    return () => {
+      window.removeEventListener("popstate", update);
+      history.pushState = origPush;
+      history.replaceState = origReplace;
+    };
+  }, []);
+
+  if (pathname === "/") {
+    return <>{children}</>;
+  }
+
   return (
     <div className="flex h-screen w-full overflow-hidden">
       <Sidebar mobileOpen={mobileOpen} onCloseMobile={() => setMobileOpen(false)} />

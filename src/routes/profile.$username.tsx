@@ -380,73 +380,67 @@ export function ProfilePageView({
           </div>
 
           <div className="px-4 sm:px-6 pb-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div className="flex flex-col sm:flex-row sm:items-start gap-3 sm:gap-4 min-w-0">
-                {/* Only the avatar overlaps the banner — name/handle stay below it */}
-                <div className="-mt-10 sm:-mt-12 shrink-0 relative z-10">
-                  <div className="size-20 sm:size-24 rounded-full ring-4 ring-background overflow-hidden bg-surface-2">
-                    <UserAvatar address={resolvedAddr} size={96} className="!size-20 sm:!size-24" />
-                  </div>
-                </div>
-
-                <div className="min-w-0">
-                  <h1 className="text-xl sm:text-2xl font-bold truncate inline-flex items-baseline min-w-0">
-                    <span className="truncate">{display}</span>
-                    <VerifiedBadge verified={profile?.is_verified} />
-                  </h1>
-                  <p className="text-sm text-muted-foreground">{publicHandle ? `@${publicHandle}` : "…"}</p>
-                  {bio && <p className="text-sm mt-2 max-w-md leading-snug">{bio}</p>}
+            {/* Row 1 (X-style): avatar overlaps the banner on the left, action
+                buttons sit top-right on the same row. */}
+            <div className="flex items-start justify-between gap-3">
+              <div className="-mt-10 sm:-mt-12 shrink-0 relative z-10">
+                <div className="size-20 sm:size-24 rounded-full ring-4 ring-background overflow-hidden bg-surface-2">
+                  <UserAvatar address={resolvedAddr} size={96} className="!size-20 sm:!size-24" />
                 </div>
               </div>
 
-              <div className="flex items-center gap-3 sm:gap-5 shrink-0">
-                <div className="text-center">
-                  <p className="font-bold">{follow.followingCount}</p>
-                  <p className="text-[11px] text-muted-foreground">Following</p>
-                </div>
-                <div className="text-center">
-                  <p className="font-bold">{follow.followerCount}</p>
-                  <p className="text-[11px] text-muted-foreground">Followers</p>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <ProfileActionButton
-                    targetAddress={resolvedAddr}
-                    targetHandle={publicHandle}
-                    me={me}
-                    myHandle={myOwnProfile?.handle}
-                    onEditOwnProfile={() => setEditing(true)}
-                  />
-                  {!isOwnProfile && (
-                    <>
+              <div className="flex items-center gap-1.5 pt-3 shrink-0">
+                {!isOwnProfile && (
+                  <>
                     {/* Subscribe to trade notifications (only after following) */}
                     {followingMe && (
                       <button
                         onClick={() => follow.setNotifyTrades(!follow.notifyTrades)}
                         disabled={!me}
-                        className={`h-10 w-10 grid place-items-center rounded-full disabled:opacity-50 disabled:cursor-not-allowed ${
+                        className={`h-9 w-9 grid place-items-center rounded-full border border-border disabled:opacity-50 disabled:cursor-not-allowed ${
                           follow.notifyTrades ? "bg-primary text-primary-foreground" : "bg-surface-2 text-muted-foreground hover:text-foreground"
                         }`}
                       >
                         {follow.notifyTrades ? <Bell className="size-4" /> : <BellOff className="size-4" />}
                       </button>
                     )}
-
-                    {/* DM */}
                     <MessageButton me={me} target={resolvedAddr} />
-
-                    {/* Report */}
-                    {resolvedAddr && (
-                      <ReportButton kind="account" targetId={resolvedAddr} />
-                    )}
-                    </>
-                  )}
-                </div>
+                    {resolvedAddr && <ReportButton kind="account" targetId={resolvedAddr} />}
+                  </>
+                )}
+                {/* Follow / Edit — rightmost, like X */}
+                <ProfileActionButton
+                  targetAddress={resolvedAddr}
+                  targetHandle={publicHandle}
+                  me={me}
+                  myHandle={myOwnProfile?.handle}
+                  onEditOwnProfile={() => setEditing(true)}
+                />
               </div>
             </div>
 
-            <div className="flex flex-wrap gap-x-5 gap-y-1 mt-4 text-xs text-muted-foreground">
+            {/* Row 2: name + handle + bio, full width below */}
+            <div className="mt-3 min-w-0">
+              <h1 className="text-xl sm:text-2xl font-bold truncate inline-flex items-baseline min-w-0">
+                <span className="truncate">{display}</span>
+                <VerifiedBadge verified={profile?.is_verified} />
+              </h1>
+              <p className="text-sm text-muted-foreground">{publicHandle ? `@${publicHandle}` : "…"}</p>
+              {bio && <p className="text-sm mt-2 max-w-md leading-snug">{bio}</p>}
+            </div>
+
+            {/* Row 3: inline stats + joined date, X-style */}
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-1 mt-3 text-sm">
+              <span className="inline-flex items-baseline gap-1">
+                <span className="font-bold">{follow.followingCount}</span>
+                <span className="text-muted-foreground">Following</span>
+              </span>
+              <span className="inline-flex items-baseline gap-1">
+                <span className="font-bold">{follow.followerCount}</span>
+                <span className="text-muted-foreground">Followers</span>
+              </span>
               {(profile as any)?.created_at && (
-                <span className="inline-flex items-center gap-1.5">
+                <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
                   <Calendar className="size-3.5" /> Joined {fmtJoined((profile as any).created_at)}
                 </span>
               )}
