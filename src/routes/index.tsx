@@ -26,6 +26,10 @@ const PHRASES: Seg[][] = [
     { text: "odds", purple: true },
     { text: "." },
   ],
+  [
+    { text: "PvP", purple: true },
+    { text: " everything." },
+  ],
 ];
 
 function useTypewriter(phrases: Seg[][]) {
@@ -81,6 +85,7 @@ export const Route = createFileRoute("/")({ component: Landing });
 
 function Landing() {
   useDocumentTitle(null);
+  const [picking, setPicking] = useState(false);
   return (
     <div
       className="fixed inset-0 z-[60] overflow-y-auto bg-black"
@@ -120,9 +125,9 @@ function Landing() {
             </h1>
             <div className="mt-10 flex items-center justify-center">
               {/* Cartoon button — chunky border, hard 3D shadow, presses
-                  down on click, tilts on hover. Plain <a> = full page load. */}
-              <a
-                href="/meme"
+                  down on click, tilts on hover. Opens the picker modal. */}
+              <button
+                onClick={() => setPicking(true)}
                 className="inline-flex items-center gap-2.5 px-10 py-4 rounded-2xl bg-[#a855f7] hover:bg-[#b06cf9] text-white text-xl font-black tracking-tight border-[3px] border-white transition-all duration-150 hover:-rotate-2 hover:scale-105 active:translate-y-1.5 active:rotate-0 active:scale-100"
                 style={{
                   boxShadow: "0 7px 0 #581c87, 0 18px 40px rgba(168,85,247,0.5)",
@@ -131,7 +136,7 @@ function Landing() {
               >
                 Let's trench
                 <ArrowUpRight className="size-6" strokeWidth={3} />
-              </a>
+              </button>
             </div>
           </div>
         </main>
@@ -166,6 +171,62 @@ function Landing() {
             />
           </div>
         </section>
+
+        {/* Picker modal — terminal or casino, cartoon style */}
+        {picking && (
+          <div
+            className="fixed inset-0 z-[70] grid place-items-center px-4 bg-black/75 backdrop-blur-sm"
+            onClick={() => setPicking(false)}
+          >
+            <div
+              className="w-full max-w-md rounded-3xl bg-[#0a0511] border-[3px] border-white p-6"
+              style={{ boxShadow: "0 10px 0 #581c87, 0 30px 80px rgba(0,0,0,0.8)" }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between">
+                <h3 className="text-white font-black text-xl tracking-tight">Pick your poison</h3>
+                <button
+                  onClick={() => setPicking(false)}
+                  aria-label="Close"
+                  className="size-9 grid place-items-center rounded-xl bg-white/10 hover:bg-white/20 text-white font-black"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="mt-5 space-y-4">
+                <a
+                  href="/meme"
+                  className="block rounded-2xl bg-[#a855f7] border-[3px] border-white px-5 py-4 transition-all duration-150 hover:-rotate-1 hover:scale-[1.02] active:translate-y-1 active:rotate-0 active:scale-100"
+                  style={{ boxShadow: "0 5px 0 #581c87" }}
+                >
+                  <span className="flex items-center justify-between">
+                    <span>
+                      <span className="block text-white font-black text-lg tracking-tight">Terminal</span>
+                      <span className="block text-white/75 text-xs mt-0.5">Trade the memes</span>
+                    </span>
+                    <ArrowUpRight className="size-6 text-white" strokeWidth={3} />
+                  </span>
+                </a>
+
+                <div
+                  className="rounded-2xl bg-white/5 border-[3px] border-white/25 px-5 py-4 opacity-80"
+                  style={{ boxShadow: "0 5px 0 rgba(255,255,255,0.08)" }}
+                >
+                  <span className="flex items-center justify-between">
+                    <span>
+                      <span className="block text-white/80 font-black text-lg tracking-tight">Casino</span>
+                      <span className="block text-white/45 text-xs mt-0.5">Trench the odds</span>
+                    </span>
+                    <span className="text-[10px] font-black uppercase tracking-wide px-2.5 py-1 rounded-full bg-[#a855f7]/25 text-[#c084fc]">
+                      Coming soon
+                    </span>
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Footer — socials */}
         <footer className="mt-auto px-6 sm:px-10 py-6 flex items-center justify-between text-[12px] text-white/40 bg-black/75">

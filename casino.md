@@ -146,23 +146,42 @@ collection sold later (Phase 6).
 5. UX note: the frontend generates and stores the secret locally (localStorage
    keyed by duel id) and auto reveals. The user never sees this mechanic.
 
-**Pool mode (operator commit, verifiable, punishable):**
-1. Round opens: operator submits `commit = keccak256(seed)` in the same tx.
-2. Betting closes at `closeBlock`.
-3. Operator reveals `seed` after `closeBlock + 2`;
-   `entropy = keccak256(seed ‖ blockhash(closeBlock + 1) ‖ roundId)`.
-4. If the operator does not reveal within `REVEAL_WINDOW`, **anyone** can call
-   `voidRound()` → full refunds, no rake. The operator's only possible attack
-   is refusing to reveal, and the contract makes that a pure loss.
+**Pool mode (pure onchain, no operator at all):**
+1. A round's betting window closes at a fixed `lockBlock` (block height, not
+   a function call — bets after it simply revert).
+2. `entropy = keccak256(blockhash(lockBlock + 1) ‖ roundId ‖ lastBetTxSalt)`
+   where `lastBetTxSalt` is a salt accumulated from every bet placed (each
+   bet folds `keccak(sender ‖ amount ‖ pick)` into the round's salt). No
+   seed, no reveal, no operator, nothing offchain.
+3. The entropy block (`lockBlock + 1`) is AFTER betting closed, so no bettor
+   can position against a known outcome. Block producer influence is the
+   residual risk — acceptable at launch bet caps on Monad's decentralized
+   validator set, and mitigated by the accumulated bet salt.
+4. If `blockhash(lockBlock + 1)` is no longer available when settlement is
+   first triggered (>256 blocks passed with zero interactions — minutes on
+   Monad), the round voids and everyone refunds. With any activity at all
+   this never happens.
 5. If Chainlink VRF or Pyth Entropy ships on Monad, swap this module without
    touching games (the beacon is behind an interface).
 
-### Keeper functions
+### Self driving rounds — no keeper, no bot, no server
 
-`closeRound()`, `settleRound()`, `expireDuel()`, `voidRound()` are all
-**permissionless** — anyone may call them (gas refund + small bounty paid from
-the pot is a nice touch). The trench bot calls them first in practice; the
-design must not depend on the bot being honest or alive.
+The contracts run themselves. There is no privileged operator and no offchain
+process the casino depends on:
+
+- **Time is block height.** Betting windows open and close by block number.
+  Nothing "closes" a round — a bet after `lockBlock` reverts, period.
+- **The poke pattern.** Every state transition (settle the previous round,
+  expire a stale duel, sweep burn dead tickets) is a permissionless function
+  folded into normal player actions: placing a bet on the next round
+  automatically settles the previous one in the same tx; claiming triggers
+  settlement if it hasn't run yet. The players ARE the keeper.
+- **A small caller bounty** (paid from rake) makes triggering transitions
+  profitable, so even a dead frontend doesn't stall rounds — anyone with a
+  wallet can poke.
+- The trench bot MAY poke as a convenience for latency, but the system is
+  fully alive without it. If every server we run disappears, the casino keeps
+  settling.
 
 ---
 
@@ -353,23 +372,31 @@ Stack stays what the app already uses; the casino adds routes, not infra.
 - Unmatched duels show countdown to auto refund (default expiry: 10 minutes).
 - Every settle shows the onchain tx hash.
 - The reveal/commit mechanics are invisible: secrets generated and stored
-  client side automatically, auto revealed by the app (and by the bot as a
-  backstop if the user closes the tab — see keeper).
+  client side automatically and auto revealed by the app. Closing the tab
+  before revealing forfeits the duel (the contract enforces it) — the UI
+  must warn loudly if a reveal is pending.
 
 ---
 
-## 6. Bot / Keeper Duties
+## 6. Nothing Offchain — The Contracts Run Everything
 
-The existing trench bot gets a casino worker. Everything it calls is
-permissionless; it is a convenience, not a trust assumption.
+There is NO bot, server or operator the casino depends on. Smart contracts
+handle 100% of game state, randomness, settlement, refunds and burns (see
+"Self driving rounds" in §3):
 
-- `closeRound()` / `settleRound()` on pooled games at the betting deadline.
-- Reveal operator seeds for pool rounds (the bot holds the seed pre image).
-- `expireDuel()` → refunds for challenges nobody accepted.
-- Auto reveal backstop for duel players who went offline (only possible if
-  the player opted to escrow their secret with the bot — optional convenience,
-  default is client side).
-- Push settle events into the Gun ticker and notifications.
+- Betting windows are block heights; nothing needs to "close" them.
+- Settlement, duel expiry and sweep burns are permissionless functions folded
+  into normal player actions (the poke pattern) and incentivized by a small
+  caller bounty from rake. The players are the keeper.
+- Duel randomness is player vs player commit reveal; pool randomness is
+  blockhash plus accumulated bet salt. No one holds a seed.
+
+The only offchain things that exist are pure conveniences with ZERO trust or
+liveness role:
+
+- The frontend auto reveals duel secrets stored in the player's own browser.
+- The trench bot MAY poke transitions for lower latency and push settle
+  events into the Gun ticker/notifications. If it dies, nothing stops.
 
 ---
 
@@ -379,7 +406,8 @@ permissionless; it is a convenience, not a trust assumption.
 - [ ] Reentrancy guards on deposit/claim/refund.
 - [ ] Checks effects interactions everywhere; settle is idempotent.
 - [ ] No round can be settled twice; no ticket claimed twice (burn on claim).
-- [ ] `voidRound()` path tested: operator disappearing = everyone refunded.
+- [ ] `voidRound()` path tested: a round that misses its entropy blockhash
+      window (>256 blocks of zero interactions) = everyone refunded.
 - [ ] Reveal griefing economics verified (non revealer always loses).
 - [ ] Bet caps per round configurable; start small, raise with confidence.
 - [ ] Pause stops bets but NEVER blocks claims/refunds.
