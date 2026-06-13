@@ -1,0 +1,24 @@
+{
+  "name": "trench-casino-contracts",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Fully onchain PvP casino for trench.meme (Monad)",
+  "scripts": {
+    "build": "hardhat compile",
+    "test": "hardhat test",
+    "deploy:monad": "hardhat run scripts/deploy.ts --network monad",
+    "node": "hardhat node"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "hardhat": "^2.22.10",
+    "typescript": "^5.8.3",
+    "ts-node": "^10.9.2",
+    "@types/node": "^22.16.5",
+    "@types/mocha": "^10.0.7",
+    "chai": "^4.5.0"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.1.0"
+  }
+}

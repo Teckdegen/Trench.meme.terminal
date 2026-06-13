@@ -38,15 +38,22 @@ Ethereum mainnet.
 
 ### Rake
 
-- A flat percentage (default **300 bps = 3%**, configurable per game, stored in
+- A flat percentage (default **1000 bps = 10%**, configurable per game, stored in
   the Vault) is skimmed from every settled pot and sent to the platform fee
   wallet (same wallet that receives trading fees).
 - Rake is the ONLY house revenue. No edge, no spread, no float games.
 
 ### The two payout structures
 
-**Duels (1v1 or small lobby).** Equal stakes escrowed from each player. Winner
-receives `total_stakes − rake`. Ties either reroll (dice) or refund.
+**Duels (1v1 or small lobby).** Stakes do NOT have to be equal — a bet can
+match any opposing bet whose stake is within the match tolerance (default
+**35%**, `MATCH_TOLERANCE_BPS = 3500`, configurable). Unequal stakes ARE the
+odds: if A stakes 50 and B stakes 40, the pot is 90 — A risks 50 to win 40,
+B risks 40 to win 50. Winner takes the whole pot minus rake. This makes the
+open challenge boards liquid: you never wait for an exact stake twin, you
+take the closest opponent. Ties: reroll where the game allows it (dice,
+war); where it can't, the round settles as a push — rake is still taken,
+the remainder returns pro rata.
 
 **Pari-mutuel pools.** Many players bet into one round, possibly on different
 outcomes with different probabilities. On settlement:
@@ -63,12 +70,19 @@ carries 36× the weight of nothing; red/black carries ~2×. The absolute payout
 still floats with the pool (this is intentional and must be communicated in
 the UI as a live "projected payout" figure that updates as bets come in).
 
-Edge cases that MUST be handled:
-- **Everyone picked the winner** → losing pool is 0, everyone gets their stake
-  back minus nothing (no rake on a push).
-- **Nobody picked the winner** → entire pool minus rake rolls over into the
-  next round of the same game (jackpot effect; do NOT send it to the house).
-- **Single bettor in a pooled round** → round does not run; auto refund.
+Edge cases — the rules:
+- **The house ALWAYS takes its cut.** Rake is skimmed on every round that
+  settles, no exceptions — wins, pushes, ties. The only rake free path is a
+  pure refund (unmatched bet, voided round that never ran).
+- **Everyone picked the winner — impossible by construction.** A round only
+  FIRES when at least two different outcomes are backed (opposing picks
+  matched). One sided rounds never run; those bets are refunded at lock. So
+  an all winners settlement cannot occur.
+- **Nobody picked the winner → the house wins the pool.** If every backed
+  outcome loses (e.g. roulette lands on a number nobody covered), the entire
+  pool goes to the house. That is the bet you made and lost — there is
+  always a loser, and when everyone loses, the counterparty is the house.
+- **Single bettor in a pooled round** → round does not fire; auto refund.
 
 ---
 
@@ -196,7 +210,7 @@ exact rule the contract enforces.
 |---|------|--------|-----------|
 | 1 | **Dice Duel** | Duel | Each player's roll = `entropy % 10000` salted with their address. Higher wins. Tie → reroll with nonce++. |
 | 2 | **Coinflip / War** | Duel | One bit / one card from entropy per player. Higher card wins; war (tie) → reroll. |
-| 3 | **RPS** | Duel | The commit IS the move: `commit = keccak(move ‖ salt)`. Classic textbook contract. Tie → refund minus zero rake. |
+| 3 | **RPS** | Duel | The commit IS the move: `commit = keccak(move ‖ salt)`. Classic textbook contract. Tie → settles as a push: rake taken, remainder returned. |
 
 ### Wave 2 — the live tables
 
@@ -228,7 +242,7 @@ exact rule the contract enforces.
 
 | # | Game | Engine | Resolution |
 |---|------|--------|-----------|
-| 15 | **Blackjack Duel** | Duel | Same shoe from entropy. Both players play vs the deck (committed hit/stand strategy or turn based with short clocks). Closest to 21 without bust takes the pot. Push → refund. |
+| 15 | **Blackjack Duel** | Duel | Same shoe from entropy. Both players play vs the deck (committed hit/stand strategy or turn based with short clocks). Closest to 21 without bust takes the pot. Push → rake taken, remainder returned. |
 | 16 | **Baccarat** | Pool | Standard coup dealt from entropy. Player pool vs Banker pool vs Tie pool, losing pools pay winning pool. |
 | 17 | **Video Poker Duel** | Duel | Same deck, one committed draw each, best 5 card hand wins. |
 | 18 | **Hi-Lo Ladder Duel** | Duel | Same card stream, committed guess sequences, longer correct streak wins. |
@@ -257,13 +271,19 @@ it is deliberately rigid:
    ("UP 12 × 25 MON vs DOWN 9 × 25 MON — 3 unmatched").
 3. At lock, **unmatched bets are auto refunded in full** — no rake, no risk.
    Only matched pairs ride the round.
-4. The contract draws **the line**: MON price anchored at the lock block
-   (two block TWAP from the canonical MON pool — never our API).
+4. The contract draws **the line**: MON price read from `MonPriceFeed` at lock.
+   A DEX TWAP is too slow to refresh for a 5-minute game, so the price comes
+   from an authorized **price bot** that pushes the live MON price every block.
+   The bot is trusted ONLY for the number — it cannot touch funds, pick winners
+   or change rules, and the line + close prices are recorded on the round so
+   every settlement is auditable against the feed's push events. A stale feed
+   blocks settlement (round waits / voids) rather than settling on bad data.
 5. Five minutes later the close price is read the same way:
    - close above the line → every UP ticket wins its matched DOWN stake,
      minus rake
    - close below the line → every DOWN ticket wins its matched UP stake
-   - dead on the line → all matched pairs refunded, no rake
+   - dead on the line → push: rake is taken, the remainder returns to both
+     sides of every matched pair
 6. Next round's betting window opens immediately. The market never sleeps.
 
 **Why tier matching:** every winner is funded by exactly one loser at the
@@ -298,7 +318,7 @@ raise(x)`, enforced order, per action clock (suggest 30s; timeout = auto
 check/fold so a disconnect never stalls the table). Blinds posted
 automatically each hand by the contract. Side pots computed onchain (this is
 the fiddly part — test exhaustively). Rake per pot, capped like real card
-rooms (e.g. 3% capped at 5 MON), no rake on hands that end preflop ("no flop,
+rooms (10% capped at 5 MON per pot), no rake on hands that end preflop ("no flop,
 no drop").
 
 **The hidden card problem.** Hole cards must stay secret during the hand but
@@ -322,6 +342,91 @@ be provably un-rigged. Three schemes, in order of trust minimization:
 
 **Rollout inside Wave 7:** heads up cash (scheme 3, bonded dealer) → zk
 shuffle dealer swap in → 6 max cash → Sit & Go → Omaha.
+
+#### How the zk shuffle actually works (scheme 2, the production target)
+
+The goal stated precisely: every player must be convinced the deck is a
+honest random permutation of 52 known cards, while no party — players,
+dealer, us — learns ANY card before its legitimate reveal, and hole cards
+are learnable only by their owner. The construction (this is the
+zkShuffle / mental poker lineage: Barnett–Smart style protocols with modern
+SNARK shuffle proofs):
+
+**1. Setup — the table key.**
+At table start the seated players (plus optionally the dealer service) run a
+distributed key generation: each party i picks a secret `sk_i` and publishes
+`pk_i = g^sk_i`. The aggregate public key is `PK = Π pk_i`. Anything
+encrypted to `PK` can only be decrypted with ALL parties cooperating —
+no single party (including us) can peek.
+
+**2. Encode and encrypt the deck.**
+The 52 cards are fixed public group elements `m_1..m_52`. Each is encrypted
+under ElGamal to the table key: `c_j = (g^r_j, m_j · PK^r_j)`. At this point
+the ciphertext order is known, so nothing is hidden yet.
+
+**3. Shuffle with a zero knowledge proof.**
+Each shuffling party in turn (players sequentially, or the dealer service
+once) takes the ciphertext list and outputs a new list where every
+ciphertext is RE-ENCRYPTED (re-randomized — same plaintext, unlinkable new
+ciphertext) and PERMUTED with a secret permutation. Alongside it they submit
+a zk proof (Groth16/PLONK over a shuffle circuit, or a Bayer–Groth shuffle
+argument) attesting: "the output list is a valid permutation re-encryption
+of the input list" — without revealing the permutation. The contract (or a
+verifier contract) checks the proof onchain. After the last shuffler, NOBODY
+knows where any card sits, yet everybody KNOWS it is a fair deck. Chained
+shuffles mean one honest shuffler suffices for full security — even if every
+other party colludes.
+
+**4. Dealing = selective threshold decryption.**
+A card is "dealt to seat k" by index (deck position deterministic per hand:
+positions 1–2 to seat 1, etc. — standard dealing order, public). To let ONLY
+seat k read card `c_j`:
+- every OTHER party publishes a partial decryption share
+  `d_i = (c_j[0])^sk_i` with a Chaum–Pedersen proof the share is consistent
+  with their `pk_i` (so nobody can poison a card),
+- seat k combines all shares with their own secret and recovers `m_j`
+  locally. To everyone else the card stays an opaque ciphertext.
+Community cards (flop/turn/river) are the same except ALL parties publish
+shares, so the decryption completes publicly onchain.
+
+**5. Showdown.**
+Players who reach showdown publish their own final shares for their hole
+cards — the contract completes the decryption, verifies the cards against
+the committed deck, and evaluates the hands. Mucked/folded hands are simply
+never decrypted: folded cards remain secret forever, exactly like a real
+card room.
+
+**6. Liveness — the failure cases.**
+- A party that refuses to publish a decryption share when the protocol
+  requires it (stalling the hand) is timed out by the action clock and
+  **forfeits their stack in play**, identical to a fold plus penalty; the
+  hand completes without them (their shares for OTHER players' cards are the
+  sensitive part — this is why the dealer service co holds a key share: it
+  guarantees there is always a live share provider for hole card deals even
+  if a player rage quits mid hand).
+- The dealer service refusing to cooperate voids the hand → full refunds and
+  its bond is slashable. The dealer can never CHEAT (it holds one share of
+  many and all its messages carry proofs) — the only power it has is to
+  stall, and stalling costs it money.
+
+**Engineering notes.**
+- Per hand cost: one shuffle proof (~52 card circuit, proven client/dealer
+  side in seconds on commodity hardware in 2026 tooling) + cheap
+  Chaum–Pedersen share proofs per dealt card. Onchain we only VERIFY:
+  Groth16 verify ≈ 300k gas per shuffle — pennies on Monad, per hand not
+  per action.
+- Heads up first is not just product sequencing: with 2 players + dealer the
+  DKG and share flows are trivial (3 parties), and table join/leave (which
+  forces a key refresh — the table key is per lineup) is rare. 6 max adds
+  key refresh churn on every sit/stand, which is the main complexity tax.
+- Libraries exist; do not roll the crypto from scratch: Geometry's zk-shuffle
+  (Barnett–Smart implementation), kobigurk/poseidon based shuffle circuits,
+  or the zkHoldem published circuits as reference. Audit whatever is chosen
+  — this layer IS the casino's reputation.
+- The Seat NFT, Vault escrow, betting state machine and rake logic are
+  IDENTICAL across schemes 1–3 — the dealing scheme is a swappable module
+  behind one interface (`IDealer`), which is what makes the bonded dealer →
+  zk migration a swap, not a rewrite.
 
 ### Social / format layer (not games, multipliers on everything)
 
@@ -438,7 +543,8 @@ liveness role:
 
 | Param | Default |
 |-------|---------|
-| Rake | 300 bps |
+| Rake | 1000 bps (10%) |
+| Match tolerance (unequal stake duels) | 3500 bps (35%) |
 | Duel expiry | 10 min |
 | Reveal window | 5 min |
 | Pool round cadence (roulette/lottery) | 60s, skip if <2 opposing bettors |

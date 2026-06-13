@@ -1,0 +1,10 @@
+artifacts/
+cache/
+typechain-types/
+.env
+node_modules/
+circuits/build/
+circuits/**/*.zkey
+circuits/**/*.ptau
+circuits/**/*.r1cs
+circuits/**/*.wasm

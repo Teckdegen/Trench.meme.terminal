@@ -110,18 +110,23 @@ function ParaSync({ hooks }: { hooks: any }) {
     Object.values(client?.wallets ?? {})?.find((w: any) => w?.type === "EVM")?.address;
 
   useEffect(() => {
+    // Explicit sign-out is the ONLY thing that clears `me`.
     if (isSigningOut()) {
       if (me) setMe(undefined);
       return;
     }
+    // Once we have an address from Para, persist it. We DELIBERATELY never
+    // clear `me` from here on a disconnect: `me` lives in localStorage and is
+    // the source of truth for "is the user signed in to our UI". Para's
+    // useAccount() reports isConnected=false during hydration and on client
+    // navigations even when the session cookie (good for ~a month) is alive —
+    // clearing on that flicker is exactly what was flashing the login gate and
+    // re-firing the referral prompt on every page click. If the Para session
+    // genuinely expires, signing calls fail at trade time and the user is told
+    // to sign in again; we do not pre-emptively log them out of the UI.
     const addr = account?.isConnected ? address?.toLowerCase() : undefined;
-    if (addr && !me) setMe(addr);
-    // Only clear `me` when Para EXPLICITLY reports disconnected. Transient
-    // query states (refetch glitches → isConnected undefined) must not log
-    // the user out — that flicker remounts LoginGate, whose auto-opener
-    // then pops the Para modal even though the user is signed in.
-    else if (!account?.isLoading && account?.isConnected === false && me) setMe(undefined);
-  }, [account?.isConnected, account?.isLoading, address, me]);
+    if (addr && addr !== me) setMe(addr);
+  }, [account?.isConnected, address, me]);
 
   // The Para modal must never linger once the user is authenticated — if it
   // is open when the account flips to connected (post-login, or a stray
