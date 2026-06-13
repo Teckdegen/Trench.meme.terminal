@@ -18,8 +18,7 @@ src/
 ├── core/
 │   ├── GameRegistry.sol     governance list of authorized game modules
 │   ├── CasinoVault.sol      the money hub; conservation + rake enforced here
-│   ├── PositionNFT.sol      ERC-721 tickets, onchain SVG, burn-on-resolve
-│   └── MonPriceFeed.sol     bot-pushed MON price for Up/Down (NOT a DEX oracle)
+│   └── PositionNFT.sol      ERC-721 tickets, onchain SVG, burn-on-resolve
 ├── lib/
 │   └── Entropy.sol          duel commit-reveal + pool blockhash randomness
 ├── games/
@@ -28,7 +27,7 @@ src/
 │   ├── DiceDuel.sol         stake-weighted dice
 │   ├── PoolEngine.sol       generic pari-mutuel rounds
 │   ├── Roulette.sol         shared-spin pool game
-│   └── UpDown.sol           MON-only, 5 tiers, tier-matched 5-min market
+│   └── UpDown.sol           MON-only thin escrow; bot resolves offchain
 └── poker/
     ├── PokerTable.sol       seats, blinds, betting, side pots, rake (heads-up)
     ├── HandEval.sol         7-card hand evaluator
@@ -99,16 +98,26 @@ npm run deploy:monad  # hardhat run scripts/deploy.ts --network monad
 Poker needs a dealer + (for zk) the generated verifiers — deploy those once the
 dealer/circuits are ready.
 
-## MON Up/Down price: a bot, not an oracle
+## MON Up/Down: offchain game, onchain money
 
-A DEX TWAP refreshes far too slowly for a 5-minute up/down game. Instead
-`MonPriceFeed` is written by an authorized **price bot** every block (`push`),
-and `UpDown` reads `freshPrice()` to anchor the line at lock and the close at
-settle — recording both prices on the round so any settlement is auditable
-against the feed's `Pushed` events. The bot is trusted ONLY for the number: it
-cannot touch funds, pick winners, or change rules, and a stale feed blocks
-settlement (the round waits / can be voided) rather than settling on bad data.
-Harden with multiple pushers + median before real size.
+Up/Down is FULLY OFFCHAIN except the money. `UpDown.sol` is a thin escrow over
+the Vault — it only takes bets and pays out. All the work (matching every UP
+bet to an equal-tier DOWN bet, drawing the line from the live MON price, and
+the win math) runs in the trench bot offchain, so a single round can hold a
+MILLION players with zero onchain matching loops.
+
+Flow: players `bet(dir)` at one of the 5 tiers → escrowed. After 5 minutes the
+bot reads the MON price, computes the full winner/loser pairing + payouts
+offchain, and calls `resolve(id, winners, amounts, winTickets, loseTickets,
+monPrice)`. The Vault caps total payout at the escrowed pool and skims the 10%
+rake, so **the bot can never over-pay even if it computes wrong**, and the
+`monPrice` is recorded in the `Resolved` event for audit. If the bot ever goes
+down, anyone can `reclaim(id)` after 1 hour to refund every player their stake.
+
+Trust model: the bot is trusted only to compute the pairing/price correctly
+(same as any price bot). It cannot touch funds outside a round, cannot over-pay,
+and cannot rug — the reclaim path guarantees players get their money back if it
+disappears.
 
 ## Status & honesty
 

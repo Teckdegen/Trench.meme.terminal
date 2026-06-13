@@ -10,7 +10,7 @@ async function main() {
   const [deployer] = await ethers.getSigners();
   const owner = await deployer.getAddress();
   const feeWallet = process.env.FEE_WALLET ?? owner;
-  const priceBot = process.env.PRICE_BOT ?? owner; // the Up/Down price pusher
+  const resolverBot = process.env.RESOLVER_BOT ?? owner; // resolves Up/Down rounds
 
   console.log("deployer:", owner);
 
@@ -43,13 +43,14 @@ async function main() {
     ROULETTE_BETTING_BLOCKS,
   );
 
-  // MON Up/Down: bot-pushed price feed (NOT a DEX oracle — see MonPriceFeed).
-  const feed = await (await ethers.getContractFactory("MonPriceFeed")).deploy(owner, priceBot);
-  await feed.waitForDeployment();
+  // MON Up/Down: thin escrow. All matching + line math is OFFCHAIN in the bot,
+  // which calls resolve(...) with the MON price after 5 min. Scales to a
+  // million players per round with zero onchain matching loops.
   const upDown = await (await ethers.getContractFactory("UpDown")).deploy(
     vaultAddr,
     ticketsAddr,
-    await feed.getAddress(),
+    resolverBot,
+    owner,
   );
 
   for (const c of [coinflip, dice, roulette, upDown]) await c.waitForDeployment();
@@ -66,7 +67,6 @@ async function main() {
     coinflip: await coinflip.getAddress(),
     dice: await dice.getAddress(),
     roulette: await roulette.getAddress(),
-    monPriceFeed: await feed.getAddress(),
     upDown: await upDown.getAddress(),
   });
 }

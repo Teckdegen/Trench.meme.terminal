@@ -115,17 +115,23 @@ function ParaSync({ hooks }: { hooks: any }) {
       if (me) setMe(undefined);
       return;
     }
-    // Once we have an address from Para, persist it. We DELIBERATELY never
-    // clear `me` from here on a disconnect: `me` lives in localStorage and is
-    // the source of truth for "is the user signed in to our UI". Para's
-    // useAccount() reports isConnected=false during hydration and on client
-    // navigations even when the session cookie (good for ~a month) is alive —
-    // clearing on that flicker is exactly what was flashing the login gate and
-    // re-firing the referral prompt on every page click. If the Para session
-    // genuinely expires, signing calls fail at trade time and the user is told
-    // to sign in again; we do not pre-emptively log them out of the UI.
+    // BOOTSTRAP ONLY — set `me` only when it is empty. This is the modal's
+    // embedded-wallet address, used purely to wake the ParaWalletBridge (which
+    // requires a truthy `me` to mount). The bridge then resolves the canonical
+    // PREGEN / API wallet and calls setMe() with ITS address — the only wallet
+    // the user ever uses, and the one `para_wallets` + server-side signing are
+    // keyed to. We must NOT override the bridge's address here on later account
+    // refreshes, or trades fail with "No Para REST wallet for 0x…" because `me`
+    // got reset to the unused embedded wallet.
+    //
+    // We also never CLEAR `me` on a disconnect: `me` lives in localStorage and
+    // is the source of truth for "signed in". Para's useAccount() reports
+    // isConnected=false during hydration and on client navigations even with a
+    // live session cookie (good ~a month); clearing on that flicker is what was
+    // flashing the login gate and re-firing the referral prompt. A genuinely
+    // expired session surfaces at trade time, not as a surprise logout.
     const addr = account?.isConnected ? address?.toLowerCase() : undefined;
-    if (addr && addr !== me) setMe(addr);
+    if (addr && !me) setMe(addr);
   }, [account?.isConnected, address, me]);
 
   // The Para modal must never linger once the user is authenticated — if it

@@ -262,38 +262,47 @@ it is deliberately rigid:
 |---|------|--------|--------------|
 | 19 | **MON Up / Down** | Tier matched round | Rounds run back to back, 5 minutes each. During the betting window you pick UP or DOWN and one of the 5 stake tiers. Bets are matched 1:1 against the opposite side at the same tier. The round can hold 100+ players — it is just many matched pairs sharing one line. |
 
+**FULLY OFFCHAIN game, onchain money.** This is the key architecture point:
+the contract (`UpDown.sol`) is *just a vault* — it takes bets and pays out.
+Everything else (matching UP vs DOWN into winner/loser pairs, drawing the
+line from the live MON price, the win math) runs in the trench **bot
+offchain**. That is what lets a single round hold **a million players at
+once** — there are no onchain matching loops, just escrow in and payout out.
+
 **The flow:**
 
-1. A round opens with a 60 second betting window. Players pick **UP or DOWN**
-   and one of the five tiers.
-2. Matching is FIFO **per tier**: a 25 MON UP bet matches the oldest
-   unmatched 25 MON DOWN bet, and so on. The UI shows live depth per tier
-   ("UP 12 × 25 MON vs DOWN 9 × 25 MON — 3 unmatched").
-3. At lock, **unmatched bets are auto refunded in full** — no rake, no risk.
-   Only matched pairs ride the round.
-4. The contract draws **the line**: MON price read from `MonPriceFeed` at lock.
-   A DEX TWAP is too slow to refresh for a 5-minute game, so the price comes
-   from an authorized **price bot** that pushes the live MON price every block.
-   The bot is trusted ONLY for the number — it cannot touch funds, pick winners
-   or change rules, and the line + close prices are recorded on the round so
-   every settlement is auditable against the feed's push events. A stale feed
-   blocks settlement (round waits / voids) rather than settling on bad data.
-5. Five minutes later the close price is read the same way:
-   - close above the line → every UP ticket wins its matched DOWN stake,
-     minus rake
-   - close below the line → every DOWN ticket wins its matched UP stake
-   - dead on the line → push: rake is taken, the remainder returns to both
-     sides of every matched pair
-6. Next round's betting window opens immediately. The market never sleeps.
+1. A round opens (5 minutes). Players `bet(UP/DOWN)` with one of the five tier
+   amounts. Each bet is escrowed into the Vault and mints a ticket. The UI
+   shows live depth per tier ("UP 12,400 × 25 MON vs DOWN 11,900 × 25 MON").
+2. Matching is computed **offchain** by the bot, per tier: every UP bet is
+   paired against an equal-tier DOWN bet — always a winner mapped to a loser.
+   Unmatched bets (the spillover on the heavier side) are simply refunded.
+3. After 5 minutes the bot reads the live MON price and computes the whole
+   result offchain: who is paired with whom, the line, and each winner's
+   payout (their stake back + their matched loser's stake, minus rake).
+4. The bot calls `resolve(roundId, winners, amounts, winTickets, loseTickets,
+   monPrice)`. The contract pays out through the Vault, which **caps total
+   payout at the round's escrowed pool and skims the 10% rake** — so the bot
+   can never over-pay even if it computes wrong. The `monPrice` is recorded in
+   the `Resolved` event for public audit.
+   - close above the line → UP side wins each pair
+   - close below the line → DOWN side wins each pair
+   - dead on the line → push: rake taken, stakes returned
+5. The next round is already open. The market never sleeps.
 
-**Why tier matching:** every winner is funded by exactly one loser at the
-same stake — the pot covers the bills by construction, with zero house
-exposure and zero odds math. 100 players in a round is just 50 matched
-pairs watching the same line. Fixed tiers are what make instant FIFO
-matching possible (no partial fills, no order book complexity).
+**Why this is safe despite the offchain logic:**
+- The Vault enforces conservation — a round cannot pay out more than it took
+  in, so a buggy or malicious bot cannot drain anything.
+- Every winner is funded by exactly one equal-tier loser, so the pot always
+  covers the bills with zero house exposure.
+- If the bot ever goes down, anyone can call `reclaim(roundId)` after 1 hour
+  and every player gets their stake back. The bot cannot trap funds.
+- The settled `monPrice` is on-chain in events; anyone can verify the result
+  against the real MON price at that time.
 
-Settlement reads **onchain state only** (anchored TWAP snapshots from the
-MON pool). The settle function recomputes from chain data anyone can verify.
+**Trust model:** the bot is trusted only to compute the pairing + price
+correctly (same trust as any price feed). It cannot touch funds outside a
+round, cannot over-pay, and cannot rug.
 
 ### Wave 7 — Poker: always on Hold'em cash tables (the crown jewel)
 
