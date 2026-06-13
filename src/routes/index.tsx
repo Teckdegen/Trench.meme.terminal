@@ -3,10 +3,76 @@
 // a fixed container, so the sidebar/topbar/bubbles never peek through.
 
 import { createFileRoute } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
 import { ArrowUpRight, Twitter, Send } from "lucide-react";
 import { APP_NAME, APP_LOGO, APP_X_URL, APP_TELEGRAM_URL } from "@/lib/brand";
 import { useDocumentTitle } from "@/lib/useDocumentTitle";
 import { useLatestTradeFeed } from "@/lib/discovery-feed";
+
+// ─────────────── Hero typewriter ─────────────────────────────────────────
+// Writes each phrase in character by character, holds, erases, then types
+// the next one. Loops forever. Segments let us keep the purple highlight
+// mid phrase while still typing one character at a time.
+
+type Seg = { text: string; purple?: boolean };
+const PHRASES: Seg[][] = [
+  [
+    { text: "The most " },
+    { text: "powerful", purple: true },
+    { text: " way to trade the trenches." },
+  ],
+  [
+    { text: "Trench the " },
+    { text: "odds", purple: true },
+    { text: "." },
+  ],
+];
+
+function useTypewriter(phrases: Seg[][]) {
+  const [phrase, setPhrase] = useState(0);
+  const [count, setCount] = useState(0);
+  const [deleting, setDeleting] = useState(false);
+  const fullLen = phrases[phrase].reduce((n, s) => n + s.text.length, 0);
+
+  useEffect(() => {
+    let t: number;
+    if (!deleting && count < fullLen) {
+      t = window.setTimeout(() => setCount((c) => c + 1), 45);
+    } else if (!deleting && count >= fullLen) {
+      t = window.setTimeout(() => setDeleting(true), 2200);
+    } else if (deleting && count > 0) {
+      t = window.setTimeout(() => setCount((c) => c - 1), 22);
+    } else {
+      t = window.setTimeout(() => {
+        setDeleting(false);
+        setPhrase((p) => (p + 1) % phrases.length);
+      }, 400);
+    }
+    return () => window.clearTimeout(t);
+  }, [count, deleting, phrase, fullLen, phrases.length]);
+
+  return { phrase, count };
+}
+
+function TypewriterHeadline() {
+  const { phrase, count } = useTypewriter(PHRASES);
+  let remaining = count;
+  return (
+    <>
+      {PHRASES[phrase].map((seg, i) => {
+        const take = Math.max(0, Math.min(seg.text.length, remaining));
+        remaining -= take;
+        if (take === 0) return null;
+        return (
+          <span key={i} className={seg.purple ? "text-[#a855f7]" : undefined}>
+            {seg.text.slice(0, take)}
+          </span>
+        );
+      })}
+      <span className="text-[#a855f7] animate-pulse">|</span>
+    </>
+  );
+}
 
 const LANDING_BG =
   "https://www.image2url.com/r2/default/images/1781284346702-ef70b66f-8264-40da-b3fa-3215a77f7153.jpg";
@@ -48,14 +114,10 @@ function Landing() {
           <div className="max-w-4xl text-center">
             <h1
               className="font-black tracking-tight leading-[1.12] text-[#d6d3d1]"
-              style={{ fontSize: "clamp(36px, 5.5vw, 76px)" }}
+              style={{ fontSize: "clamp(36px, 5.5vw, 76px)", minHeight: "2.3em" }}
             >
-              The most <span className="text-[#a855f7]">powerful</span> way to
-              trade the trenches.
+              <TypewriterHeadline />
             </h1>
-            <p className="mt-6 text-[#d6d3d1] text-lg sm:text-2xl leading-relaxed max-w-2xl mx-auto">
-              <span className="font-bold text-white">Trench the odds</span>
-            </p>
             <div className="mt-10 flex items-center justify-center">
               {/* Cartoon button — chunky border, hard 3D shadow, presses
                   down on click, tilts on hover. Plain <a> = full page load. */}
@@ -78,12 +140,12 @@ function Landing() {
         <section className="px-5 sm:px-10 py-16 bg-black/75 backdrop-blur-sm">
           <h2
             className="text-center font-black tracking-tight leading-tight text-[#d6d3d1]"
-            style={{ fontSize: "clamp(24px, 3.2vw, 38px)" }}
+            style={{ fontSize: "clamp(28px, 4vw, 48px)" }}
           >
             The <span className="text-[#a855f7] italic">degen</span> way to play.
           </h2>
 
-          <div className="mt-10 max-w-3xl mx-auto rounded-3xl border border-white/10 overflow-hidden divide-y divide-white/10">
+          <div className="mt-12 max-w-4xl mx-auto rounded-3xl border border-white/10 overflow-hidden divide-y divide-white/10">
             <VibeRow
               chip="The trenches"
               title="Trade the memes"
@@ -141,14 +203,14 @@ function VibeRow({
 }: { chip: string; title: string; body: string; panel: React.ReactNode }) {
   return (
     <div className="grid md:grid-cols-2 bg-[#070110]/80">
-      <div className="px-6 sm:px-7 py-6 flex flex-col justify-center">
-        <span className="h-6 px-2.5 rounded-full border border-white/15 text-white/60 text-[10px] font-bold uppercase tracking-wide inline-flex items-center justify-center w-fit">
+      <div className="px-7 sm:px-9 py-9 flex flex-col justify-center">
+        <span className="h-7 px-3 rounded-full border border-white/15 text-white/60 text-[11px] font-bold uppercase tracking-wide inline-flex items-center justify-center w-fit">
           {chip}
         </span>
-        <h3 className="mt-3 text-white font-black text-xl tracking-tight">{title}</h3>
-        <p className="mt-1.5 text-[13px] text-[#a8a29e] leading-relaxed max-w-sm">{body}</p>
+        <h3 className="mt-4 text-white font-black text-2xl tracking-tight">{title}</h3>
+        <p className="mt-2 text-[15px] text-[#a8a29e] leading-relaxed max-w-sm">{body}</p>
       </div>
-      <div className="px-6 sm:px-7 py-6 md:border-l border-white/10 grid place-items-center">
+      <div className="px-7 sm:px-9 py-9 md:border-l border-white/10 grid place-items-center">
         {panel}
       </div>
     </div>
