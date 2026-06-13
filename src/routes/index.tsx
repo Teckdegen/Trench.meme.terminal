@@ -35,21 +35,12 @@ function Landing() {
       />
 
       <div className="relative flex flex-col min-h-full">
-        {/* Top bar — logo left, App button right */}
-        <header className="flex items-center justify-between px-6 sm:px-10 py-6">
+        {/* Top bar — logo only */}
+        <header className="flex items-center px-6 sm:px-10 py-6">
           <div className="flex items-center gap-2.5">
             <img src={APP_LOGO} alt={APP_NAME} className="size-8 rounded-lg object-cover" />
             <span className="text-white font-bold text-xl tracking-tight">{APP_NAME}</span>
           </div>
-          {/* Plain <a>, not router Link — entering the app does a full page
-              load so the terminal boots completely fresh. */}
-          <a
-            href="/meme"
-            className="h-11 px-6 rounded-full bg-[#a855f7] hover:bg-[#9333ea] text-white text-sm font-bold inline-flex items-center gap-1.5 transition-colors"
-            style={{ boxShadow: "0 8px 30px rgba(168,85,247,0.45)" }}
-          >
-            App <ArrowUpRight className="size-4" />
-          </a>
         </header>
 
         {/* ── Section 1: Hero ── */}
@@ -65,13 +56,19 @@ function Landing() {
             <p className="mt-6 text-[#d6d3d1] text-lg sm:text-2xl leading-relaxed max-w-2xl mx-auto">
               <span className="font-bold text-white">Trench the odds</span>
             </p>
-            <div className="mt-10 flex items-center justify-center gap-3">
+            <div className="mt-10 flex items-center justify-center">
+              {/* Cartoon button — chunky border, hard 3D shadow, presses
+                  down on click, tilts on hover. Plain <a> = full page load. */}
               <a
                 href="/meme"
-                className="px-8 py-3.5 rounded-full bg-[#a855f7] hover:bg-[#9333ea] text-white text-base font-bold inline-flex items-center gap-2 transition-colors"
-                style={{ boxShadow: "0 10px 40px rgba(168,85,247,0.5)" }}
+                className="inline-flex items-center gap-2.5 px-10 py-4 rounded-2xl bg-[#a855f7] hover:bg-[#b06cf9] text-white text-xl font-black tracking-tight border-[3px] border-white transition-all duration-150 hover:-rotate-2 hover:scale-105 active:translate-y-1.5 active:rotate-0 active:scale-100"
+                style={{
+                  boxShadow: "0 7px 0 #581c87, 0 18px 40px rgba(168,85,247,0.5)",
+                  textShadow: "0 2px 0 rgba(0,0,0,0.25)",
+                }}
               >
-                Start trading <ArrowUpRight className="size-5" />
+                Let's trench
+                <ArrowUpRight className="size-6" strokeWidth={3} />
               </a>
             </div>
           </div>

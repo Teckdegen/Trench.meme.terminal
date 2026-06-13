@@ -109,14 +109,26 @@ gameId, roundId, pick (game specific encoding), stake, timestamp,
 status: OPEN | WON | LOST | REFUNDED | CLAIMED
 ```
 
-- **Claim = burn.** A WON ticket is burned to pull the payout from the Vault.
+- **Every ticket ends burned. No exceptions.** Tickets are round artifacts,
+  not collectibles — after a round resolves, no ticket from it may keep
+  existing:
+  - WON → burned by the holder's `claim()` call (burn and payout are one
+    atomic action; you cannot claim without burning).
+  - LOST → burnable by anyone after settlement via a permissionless
+    `sweepBurn(roundId)` that batch burns all dead tickets of a round. The
+    keeper bot calls it right after settling; holders can also burn their
+    own early.
+  - REFUNDED → burned by the refund call itself, same atomic pattern as
+    claim.
+- **Burning is safe by construction:** a ticket's value lives in the Vault's
+  accounting, not in the token id — sweep burning a LOST ticket destroys
+  nothing of value, and a WON ticket can never be burned by anyone except
+  its holder claiming it.
 - Tickets are **freely transferable while OPEN** — this creates the secondary
   market for live bets (sell your crash ticket mid round, flip a roulette
   ticket before the spin). The claimer is whoever holds the NFT at settlement.
-- LOST tickets persist as collectibles (dead ticket collection, loss
-  leaderboards).
 - The SVG ticket art shows game, pick, stake, round and status — it must look
-  good in a wallet. This is marketing surface, treat it as such.
+  good in a wallet while live. This is marketing surface, treat it as such.
 
 What NOT to do: do not mint individual playing cards as NFTs. Hands/cards are
 encoded in the position's metadata. Cosmetic NFT decks/skins are a separate
@@ -205,40 +217,44 @@ exact rule the contract enforces.
 ### Wave 6 — Up / Down (the ONLY token game)
 
 One price game, done perfectly. No token battles, no pump roulettes, no
-volume races — they dilute the casino. Up / Down is the whole category.
+volume races — they dilute the casino. Up / Down is the whole category, and
+it is deliberately rigid:
+
+- **One asset: MON.** Nothing else. No whitelist, no token picker.
+- **One market: the 5 minute round.** No window options.
+- **Five stake tiers, nothing in between:** 5 / 10 / 25 / 50 / 100 MON
+  (constants in the contract, adjustable only by governance).
 
 | # | Game | Engine | How it works |
 |---|------|--------|--------------|
-| 19 | **Up / Down** | Duel (P2P matched) | Pick an asset, pick UP or DOWN, pick a stake. Your bet sits on the open book until another user takes the OPPOSITE side at the same stake — the moment it matches, the round fires. |
+| 19 | **MON Up / Down** | Tier matched round | Rounds run back to back, 5 minutes each. During the betting window you pick UP or DOWN and one of the 5 stake tiers. Bets are matched 1:1 against the opposite side at the same tier. The round can hold 100+ players — it is just many matched pairs sharing one line. |
 
 **The flow:**
 
-1. Player A picks asset (MON or a whitelisted token), direction (UP or DOWN),
-   stake, and a window (1 / 5 / 15 minutes).
-2. The bet sits on an open order book, visible to everyone, cancellable and
-   auto refunded after expiry (default 10 min) if nobody matches it.
-3. Player B takes the opposite direction at the same stake → **match fires**.
-   The contract draws **the line**: the asset's price anchored at the match
-   block (two block TWAP from the canonical DEX pool — never our API).
-4. When the window closes, the contract reads the close price the same way:
-   - close above the line → UP wins the pot minus rake
-   - close below the line → DOWN wins
-   - exactly on the line → both refunded, no rake
-5. Both positions are NFTs while live — a winning looking Up ticket at minute
-   3 of 5 is sellable on the ticket market.
+1. A round opens with a 60 second betting window. Players pick **UP or DOWN**
+   and one of the five tiers.
+2. Matching is FIFO **per tier**: a 25 MON UP bet matches the oldest
+   unmatched 25 MON DOWN bet, and so on. The UI shows live depth per tier
+   ("UP 12 × 25 MON vs DOWN 9 × 25 MON — 3 unmatched").
+3. At lock, **unmatched bets are auto refunded in full** — no rake, no risk.
+   Only matched pairs ride the round.
+4. The contract draws **the line**: MON price anchored at the lock block
+   (two block TWAP from the canonical MON pool — never our API).
+5. Five minutes later the close price is read the same way:
+   - close above the line → every UP ticket wins its matched DOWN stake,
+     minus rake
+   - close below the line → every DOWN ticket wins its matched UP stake
+   - dead on the line → all matched pairs refunded, no rake
+6. Next round's betting window opens immediately. The market never sleeps.
 
-**Asset list:** MON to start, plus a small curated set of tokens added by the
-team (governance/admin function `allowAsset(pool)` — the asset must have a
-deep enough canonical pool for the TWAP to be manipulation resistant; thin
-curve tokens are NOT eligible).
+**Why tier matching:** every winner is funded by exactly one loser at the
+same stake — the pot covers the bills by construction, with zero house
+exposure and zero odds math. 100 players in a round is just 50 matched
+pairs watching the same line. Fixed tiers are what make instant FIFO
+matching possible (no partial fills, no order book complexity).
 
-**Why P2P matching instead of a pool:** the matched opposite side IS the
-pricing. No line setting, no odds math — UP money equals DOWN money by
-construction, the fairest possible price bet. The open book also doubles as
-content: "3 degens are longing MON at 50 each, someone fade them."
-
-Settlement reads **onchain state only** (anchored TWAP snapshots from the DEX
-pool). The settle function recomputes from chain data anyone can verify.
+Settlement reads **onchain state only** (anchored TWAP snapshots from the
+MON pool). The settle function recomputes from chain data anyone can verify.
 
 ### Wave 7 — Poker: always on Hold'em cash tables (the crown jewel)
 
