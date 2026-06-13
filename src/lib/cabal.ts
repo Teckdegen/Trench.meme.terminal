@@ -13,6 +13,7 @@ import {
   retryPendingInvites,
   kickMemberFromCabal as revokeCabalMemberKey,
   rotateCabalKey as rotateCabalKeyCrypto,
+  distributeCabalKey as distributeCabalKeyCrypto,
   clearCabalKeyCache,
 } from "@/lib/cabal-crypto";
 
@@ -459,15 +460,23 @@ export async function deleteCabal(cabalId: string, me: string, meta: CabalMeta) 
   clearCabalKeyCache(cabalId);
 }
 
-/** Kick a member: revoke encryption key, rotate, and remove Gun membership. */
-export async function kickMemberFromCabal(cabalId: string, me: string, target: string) {
-  await revokeCabalMemberKey(cabalId, me, target);
-  if (!GUN_ENABLED) return;
-  const gun = await getGun();
-  if (!gun) return;
-  const addr = target.toLowerCase();
-  cabalNode(gun, cabalId).get("members").get(addr).put(null);
-  gun.get(NS).get("users").get(addr).get("cabals").get(cabalId).put(null);
+/** Kick a member: remove Gun membership, then revoke + rotate the key so they
+ *  can't read new messages, re-granting everyone who remains. */
+export async function kickMemberFromCabal(
+  cabalId: string,
+  me: string,
+  target: string,
+  remainingMembers: string[] = [],
+) {
+  if (GUN_ENABLED) {
+    const gun = await getGun();
+    if (gun) {
+      const addr = target.toLowerCase();
+      cabalNode(gun, cabalId).get("members").get(addr).put(null);
+      gun.get(NS).get("users").get(addr).get("cabals").get(cabalId).put(null);
+    }
+  }
+  await revokeCabalMemberKey(cabalId, me, target, remainingMembers);
 }
 
 export function useCabalMembers(cabalId: string | undefined) {
@@ -741,10 +750,25 @@ export function useCabalTyping(cabalId: string | undefined, me: string | undefin
 
 export { inviteMemberToCabal, retryPendingInvites };
 
-export async function rotateCabalKey(cabalId: string, me: string): Promise<{ granted: number; stillPending: number }> {
-  const retry = await retryPendingInvites(cabalId, me).catch(() => ({ granted: 0, stillPending: 0 }));
-  await rotateCabalKeyCrypto(cabalId, me);
-  return retry;
+/** Rotate the cabal key, re-granting every CURRENT member (from the live Gun
+ *  membership list). Returns how many got the new key vs are still pending a
+ *  published pubkey. */
+export async function rotateCabalKey(
+  cabalId: string,
+  me: string,
+  members: string[],
+): Promise<{ granted: number; pending: number }> {
+  return rotateCabalKeyCrypto(cabalId, me, members);
+}
+
+/** Push the current key to any member missing a grant (e.g. just-added members
+ *  who have since published a pubkey). Owner calls this on cabal open. */
+export async function distributeCabalKey(
+  cabalId: string,
+  me: string,
+  members: string[],
+): Promise<{ granted: number; pending: number }> {
+  return distributeCabalKeyCrypto(cabalId, me, members);
 }
 
 // ─────────────── Pending invites (Supabase-backed) ───────────────────

@@ -311,24 +311,54 @@ async function ensureBundle(me: string): Promise<LoadedBundle> {
     }
   }
 
-  // 3. Try server backup (recovery on new device)
-  try {
-    const row = await getKeyBackup({ data: { account: me } });
-    if (row?.ciphertext) {
-      const sig = await askWalletForBackupSignature(me);
-      if (sig) {
-        const wrap = await deriveBackupWrapKey(sig);
-        const bundle = await decryptBundleFromBackup(row.ciphertext, wrap);
-        localStorage.setItem(LOCAL_BUNDLE_KEY, JSON.stringify(bundle));
-        _bundle = await importBundle(bundle);
-        return _bundle;
-      }
+  // 3. Try server backup (recovery on a new device / cleared storage).
+  //
+  // CRITICAL: if this account ALREADY has published keys (a backup row OR a
+  // published pubkey), we must NOT fall through to generating a fresh bundle.
+  // Doing so republishes a new pubkey and ORPHANS every existing cabal grant
+  // wrapped to the old key — which is exactly the "messages always fail to
+  // decrypt" cascade. A returning user whose recovery fails must get a clear
+  // error and retry, never silent key regeneration.
+  const backup = await getKeyBackup({ data: { account: me } }).catch(() => null);
+  const existingPub = backup?.ciphertext
+    ? null
+    : await getEncryptionPubkey({ data: { account: me } }).catch(() => null);
+  const isReturningUser = !!backup?.ciphertext || !!existingPub;
+
+  if (backup?.ciphertext) {
+    const sig = await askWalletForBackupSignature(me);
+    if (!sig) {
+      throw new Error(
+        "Your chat keys are saved to this account but need your wallet signature to unlock. " +
+        "Approve the signature and reopen the cabal.",
+      );
     }
-  } catch (e) {
-    console.warn("[cabal-crypto] backup recovery failed, generating fresh", e);
+    try {
+      const wrap = await deriveBackupWrapKey(sig);
+      const bundle = await decryptBundleFromBackup(backup.ciphertext, wrap);
+      localStorage.setItem(LOCAL_BUNDLE_KEY, JSON.stringify(bundle));
+      _bundle = await importBundle(bundle);
+      return _bundle;
+    } catch (e) {
+      // DO NOT regenerate — that orphans all grants. Surface and let them retry.
+      console.warn("[cabal-crypto] backup decrypt failed", e);
+      throw new Error(
+        "Couldn't unlock your saved chat keys. Make sure you approve the same wallet " +
+        "signature you used before, then reopen the cabal.",
+      );
+    }
   }
 
-  // 4. First-time setup: generate, publish public, back up encrypted
+  if (isReturningUser) {
+    // Has a published pubkey but no recoverable backup (older account). Refuse
+    // to clobber it — better to fail loudly than to break everyone's grants.
+    throw new Error(
+      "Your chat identity exists on another device but can't be recovered here yet. " +
+      "Open a cabal on your original device, or contact support to reset chat keys.",
+    );
+  }
+
+  // 4. First-time setup ONLY (genuinely new user): generate, publish, back up.
   const bundle = await generateFreshBundle();
   localStorage.setItem(LOCAL_BUNDLE_KEY, JSON.stringify(bundle));
   _bundle = await importBundle(bundle);
@@ -507,31 +537,114 @@ export async function retryPendingInvites(cabalId: string, me: string): Promise<
   return { granted, stillPending };
 }
 
-/** Generate a new cabal key + re-wrap for every CURRENT member. Use after kick. */
-export async function rotateCabalKey(cabalId: string, _me: string): Promise<void> {
+/**
+ * Generate a new cabal key + wrap it for every CURRENT MEMBER (driven by the
+ * Gun membership list passed in, NOT the old grant rows — that's why rotation
+ * used to report "0 sent"). Members whose ECDH pubkey is published get the new
+ * key immediately; the rest are queued as pending invites. Returns counts so
+ * the UI can show the truth.
+ */
+export async function rotateCabalKey(
+  cabalId: string,
+  me: string,
+  members: string[],
+): Promise<{ granted: number; pending: number }> {
   const fresh = await createCabalAesKey();
-  const members = await listCabalGrants({ data: { cabalId } });
-  if (!members) return;
-  for (const m of members) {
-    if (!m.pubkey) continue;
-    const wrapped = await wrapCabalKey(fresh, m.pubkey);
+  // Always include the rotator (owner) so they keep access.
+  const roster = uniqueAddrs([me, ...members]);
+  let granted = 0;
+  let pending = 0;
+  for (const account of roster) {
+    const pub = await fetchMemberEcdhPub(account);
+    if (!pub) {
+      await upsertPendingInvite({ data: { cabalId, invitee: account, grantedBy: me } });
+      pending += 1;
+      continue;
+    }
+    const wrapped = await wrapCabalKey(fresh, pub);
     await upsertCabalGrant({ data: {
       cabalId,
-      account: m.account,
-      role: m.account.toLowerCase() === _me.toLowerCase() ? "owner" : "member",
+      account,
+      role: account.toLowerCase() === me.toLowerCase() ? "owner" : "member",
       wrappedKey: wrapped,
-      pubkey: m.pubkey,
-      grantedBy: _me,
+      pubkey: pub,
+      grantedBy: me,
     } });
+    await deletePendingInvite({ data: { cabalId, invitee: account } }).catch(() => {});
+    granted += 1;
   }
   cabalKeyCache.set(cabalId, fresh);
   setChannelKey(cabalId, fresh);
+  return { granted, pending };
+}
+
+/**
+ * Distribute the CURRENT cabal key (no rotation) to any member who doesn't yet
+ * have a grant — e.g. members who joined and have since published their pubkey.
+ * Called when the owner opens the cabal so freshly-added members can decrypt
+ * without a manual rotate. Safe to call often; members who already have a grant
+ * are skipped.
+ */
+export async function distributeCabalKey(
+  cabalId: string,
+  me: string,
+  members: string[],
+): Promise<{ granted: number; pending: number }> {
+  const key = await loadCabalKey(cabalId, me);
+  if (!key) return { granted: 0, pending: 0 };
+  const existing = await listCabalGrants({ data: { cabalId } });
+  const haveGrant = new Set((existing ?? []).map((g) => g.account.toLowerCase()));
+  let granted = 0;
+  let pending = 0;
+  for (const account of uniqueAddrs(members)) {
+    if (haveGrant.has(account.toLowerCase())) continue;
+    const pub = await fetchMemberEcdhPub(account);
+    if (!pub) {
+      await upsertPendingInvite({ data: { cabalId, invitee: account, grantedBy: me } });
+      pending += 1;
+      continue;
+    }
+    const wrapped = await wrapCabalKey(key, pub);
+    await upsertCabalGrant({ data: {
+      cabalId,
+      account,
+      role: "member",
+      wrappedKey: wrapped,
+      pubkey: pub,
+      grantedBy: me,
+    } });
+    await deletePendingInvite({ data: { cabalId, invitee: account } }).catch(() => {});
+    granted += 1;
+  }
+  return { granted, pending };
+}
+
+function uniqueAddrs(addrs: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const a of addrs) {
+    const lc = (a ?? "").toLowerCase();
+    if (!/^0x[a-f0-9]{40}$/.test(lc) || seen.has(lc)) continue;
+    seen.add(lc);
+    out.push(lc);
+  }
+  return out;
 }
 
 /** Kick a member: delete their grant + rotate the cabal key so they can't decrypt new messages. */
-export async function kickMemberFromCabal(cabalId: string, me: string, target: string): Promise<void> {
+export async function kickMemberFromCabal(
+  cabalId: string,
+  me: string,
+  target: string,
+  remainingMembers: string[],
+): Promise<void> {
   await deleteCabalGrant({ data: { cabalId, account: target } });
-  await rotateCabalKey(cabalId, me);
+  await deletePendingInvite({ data: { cabalId, invitee: target } }).catch(() => {});
+  // Rotate so the kicked member can't read new messages, re-granting everyone
+  // who remains.
+  await rotateCabalKey(cabalId, me, remainingMembers.filter(
+    (a) => a.toLowerCase() !== target.toLowerCase(),
+  ));
 }
 
 // ─────────────── per-message signing (impersonation guard) ───────────

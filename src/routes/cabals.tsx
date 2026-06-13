@@ -44,6 +44,7 @@ import {
   inviteAddressToCabal,
   kickMemberFromCabal,
   rotateCabalKey,
+  distributeCabalKey,
   type CabalMeta,
 } from "@/lib/cabal";
 import { resolveToAddress } from "@/lib/identity";
@@ -1282,11 +1283,17 @@ function MembersRail({
   const myRole = members.find((m: any) => m.account_address?.toLowerCase() === me?.toLowerCase())?.role;
   const canKick = isOwner || myRole === "mod" || myRole === "owner";
 
+  const memberAddrs = members
+    .map((m: any) => m.account_address)
+    .filter((a: any): a is string => typeof a === "string");
+
   const kick = async (target: string) => {
     if (!me || !canKick) return;
     if (!confirm(`Kick ${shortAddrLocal(target)}? Cabal key will rotate.`)) return;
     setBusy(target);
-    try { await kickMemberFromCabal(cabal.id, me, target); } finally { setBusy(null); }
+    try {
+      await kickMemberFromCabal(cabal.id, me, target, memberAddrs);
+    } finally { setBusy(null); }
   };
 
   const rotate = async () => {
@@ -1294,13 +1301,30 @@ function MembersRail({
     if (!confirm("Rotate cabal key? All members re-derive on next message.")) return;
     setBusy("rotate");
     try {
-      const res = await rotateCabalKey(cabal.id, me);
-      alert(`Encryption key rotated. Granted ${res.granted} pending member${res.granted === 1 ? "" : "s"}. ${res.stillPending} still pending.`);
+      const res = await rotateCabalKey(cabal.id, me, memberAddrs);
+      alert(
+        `Encryption key rotated for ${res.granted} member${res.granted === 1 ? "" : "s"}.` +
+        (res.pending ? ` ${res.pending} still need to open the app first.` : ""),
+      );
     } catch (e: any) {
       console.error(e);
       alert(`Couldn't rotate encryption key: ${e?.message ?? e}`);
     } finally { setBusy(null); }
   };
+
+  // Owner auto-distributes the current key to any member missing a grant (e.g.
+  // freshly-added members who have since published their pubkey) on open, so
+  // adding someone "just works" without a manual rotate.
+  useEffect(() => {
+    if (!me || !isOwner || memberAddrs.length === 0) return;
+    let cancel = false;
+    (async () => {
+      try {
+        if (!cancel) await distributeCabalKey(cabal.id, me, memberAddrs);
+      } catch (e) { console.warn("[cabal] auto key distribute failed", e); }
+    })();
+    return () => { cancel = true; };
+  }, [cabal.id, me, isOwner, memberAddrs.join(",")]);
 
   const retry = async () => {
     if (!me) return;
