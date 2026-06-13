@@ -27,7 +27,16 @@ src/
 │   ├── DiceDuel.sol         stake-weighted dice
 │   ├── PoolEngine.sol       generic pari-mutuel rounds
 │   ├── Roulette.sol         shared-spin pool game
-│   └── UpDown.sol           MON-only thin escrow; bot resolves offchain
+│   ├── UpDown.sol           MON-only thin escrow; bot resolves offchain
+│   ├── LobbyEngine.sol      generic equal-stake lobby (fill → blockhash draw)
+│   ├── AlphaCall.sol        Number Nuke — closest hidden call, collision=house
+│   ├── Capper.sol           Liar's Dice — hidden dice + bluff bidding
+│   ├── DiamondHands.sol     Chicken — first to paper-hand loses the pot
+│   ├── GasWar.sol           Blind Auction — all-pay sealed bid
+│   ├── Chamber.sol          Russian Roulette — one loser funds the survivors
+│   ├── ExitScam.sol         Split/Steal — hold or dump the bag
+│   ├── WhaleThrone.sol      King of the Hill — last on the throne wins
+│   └── KnifeCatcher.sol     Musical Chairs — last degen takes the pot
 └── poker/
     ├── PokerTable.sol       seats, blinds, betting, side pots, rake (heads-up)
     ├── HandEval.sol         7-card hand evaluator

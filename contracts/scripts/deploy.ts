@@ -53,12 +53,26 @@ async function main() {
     owner,
   );
 
-  for (const c of [coinflip, dice, roulette, upDown]) await c.waitForDeployment();
+  // ── Degen classics (Wave 8), all PvP ──────────────────────────────────
+  const alphaCall = await (await ethers.getContractFactory("AlphaCall")).deploy(vaultAddr, ticketsAddr);
+  const diamondHands = await (await ethers.getContractFactory("DiamondHands")).deploy(vaultAddr, ticketsAddr);
+  const chamber = await (await ethers.getContractFactory("Chamber")).deploy(vaultAddr, ticketsAddr);
+  const knifeCatcher = await (await ethers.getContractFactory("KnifeCatcher")).deploy(vaultAddr, ticketsAddr);
+  const exitScam = await (await ethers.getContractFactory("ExitScam")).deploy(vaultAddr, ticketsAddr);
+  const capper = await (await ethers.getContractFactory("Capper")).deploy(vaultAddr, ticketsAddr);
+  const gasWar = await (await ethers.getContractFactory("GasWar")).deploy(
+    vaultAddr, ticketsAddr, ethers.parseEther("50"), // MAX_BID
+  );
+  const whaleThrone = await (await ethers.getContractFactory("WhaleThrone")).deploy(
+    vaultAddr, ticketsAddr, ethers.parseEther("1"), // base seize price
+  );
 
-  await (await registry.addGame(await coinflip.getAddress())).wait();
-  await (await registry.addGame(await dice.getAddress())).wait();
-  await (await registry.addGame(await roulette.getAddress())).wait();
-  await (await registry.addGame(await upDown.getAddress())).wait();
+  const games = [
+    coinflip, dice, roulette, upDown,
+    alphaCall, diamondHands, chamber, knifeCatcher, exitScam, capper, gasWar, whaleThrone,
+  ];
+  for (const c of games) await c.waitForDeployment();
+  for (const c of games) await (await registry.addGame(await c.getAddress())).wait();
 
   console.log({
     registry: await registry.getAddress(),
@@ -68,6 +82,14 @@ async function main() {
     dice: await dice.getAddress(),
     roulette: await roulette.getAddress(),
     upDown: await upDown.getAddress(),
+    alphaCall: await alphaCall.getAddress(),
+    diamondHands: await diamondHands.getAddress(),
+    chamber: await chamber.getAddress(),
+    knifeCatcher: await knifeCatcher.getAddress(),
+    exitScam: await exitScam.getAddress(),
+    capper: await capper.getAddress(),
+    gasWar: await gasWar.getAddress(),
+    whaleThrone: await whaleThrone.getAddress(),
   });
 }
 

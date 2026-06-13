@@ -437,6 +437,27 @@ card room.
   behind one interface (`IDealer`), which is what makes the bonded dealer →
   zk migration a swap, not a rewrite.
 
+### Wave 8 — Degen Classics (PvP remakes of casino/party games)
+
+Eight well-known games, re-skinned with trench names and rebuilt PvP so the
+house only rakes. Each maps to an existing engine or a tight standalone.
+
+| Trench name | Based on | Engine | How it resolves |
+|-------------|----------|--------|-----------------|
+| **Capper** | Liar's Dice | Standalone duel | Both roll 5 hidden dice (commit-reveal), alternate raising bids on the 10-dice total ("≥ N show face F"), or `callCap` to challenge. Reveal both hands: bid holds → caller loses; it was cap → bidder loses. Winner takes the pot. Stall/no-reveal = forfeit. |
+| **Alpha Call** | Number Nuke | DuelEngine | Both secretly call 0–999. Closest to the hidden entropy target wins. Call the SAME number → both nuke, house takes the pot. Equal distance, different calls → push. |
+| **Diamond Hands** | Chicken | Standalone duel | Equal stakes; a multiplier climbs every block. First to `paperHand` (tap out) loses the pot to the one who held. Neither folds before the crash block → both held too long, house takes it. |
+| **Gas War** | Blind Auction | Standalone lobby | All-pay sealed auction. Everyone escrows a fixed MAX_BID and commits a secret bid. Highest bid wins the pot of all bids (minus rake); unbid portions refunded; everyone pays their bid win or lose. Ties split. |
+| **Chamber** | Russian Roulette | LobbyEngine (6) | 6 equal stakes, entropy picks the bullet. That seat loses; the pot (minus rake) splits among the 5 survivors — each walks up ~1 buy-in. |
+| **Exit Scam** | The Heist (split/steal) | Standalone lobby | 4 equal stakes, each secretly votes HOLD or DUMP (commit-reveal). All hold → even split. Exactly one dumps → lone rugger takes the bag. Two+ dump → they cancel, house takes it. No-reveal counts as DUMP. |
+| **Whale Throne** | King of the Hill | Standalone | Pay the (rising) price to `seize` the throne; your MON joins the pot, each takeover extends the window (anti-snipe). Whoever holds the throne when the window closes takes the whole pot — funded by everyone they dethroned. |
+| **Knife Catcher** | Musical Chairs | LobbyEngine (8) | 8 equal stakes. UI animates round-by-round eliminations; the contract draws one fair winner (equal 1/N odds) who takes the whole pot. |
+
+All eight obey the same invariants: 10% rake on every settled pot, house takes
+the pool when a game busts to nobody (Alpha Call collision, Diamond Hands
+double-hold, Exit Scam multi-dump), pull-payment claims, burn-on-resolve
+tickets, block-height timing with permissionless settlement.
+
 ### Social / format layer (not games, multipliers on everything)
 
 - **Challenge anyone**: duel button on profiles and in cabal chat. A challenge

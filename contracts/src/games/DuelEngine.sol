@@ -140,13 +140,19 @@ abstract contract DuelEngine is IGame, ReentrancyGuard {
         Duel storage d = duels[id];
         uint256 e = Entropy.duelEntropy(d.secretA, d.secretB, id);
         // Concrete game decides the winner. Returns:
-        //   0 = player A wins, 1 = player B wins, 2 = push/tie.
+        //   0 = A wins, 1 = B wins, 2 = push/tie, 3 = both bust → house wins.
         uint8 outcome = _resolve(d, e);
 
         uint256 pot = uint256(d.stakeA) + d.stakeB;
         bytes32 rk = _roundKey(id);
 
-        if (outcome == 2) {
+        if (outcome == 3) {
+            // Both bust (e.g. Alpha Call collision) → house takes the pot.
+            vault.houseWin(rk);
+            tickets.setStatus(d.ticketA, IPositionNFT.Status.LOST);
+            tickets.setStatus(d.ticketB, IPositionNFT.Status.LOST);
+            emit Resolved(id, address(0), 0);
+        } else if (outcome == 2) {
             // Push: house still rakes; remainder returns pro-rata to stakes.
             uint256 rake = (pot * RAKE_BPS) / 10_000;
             uint256 rem = pot - rake;
@@ -181,7 +187,7 @@ abstract contract DuelEngine is IGame, ReentrancyGuard {
     }
 
     /// @dev Concrete games implement the win rule. e = duel entropy.
-    ///      Return 0 (A wins), 1 (B wins), or 2 (push).
+    ///      Return 0 (A wins), 1 (B wins), 2 (push), or 3 (both bust → house).
     function _resolve(Duel storage d, uint256 e) internal virtual returns (uint8);
 
     // ── Claim a win (burn-on-claim) ─────────────────────────────────────
