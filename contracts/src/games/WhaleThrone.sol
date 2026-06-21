@@ -17,7 +17,7 @@ contract WhaleThrone is IGame, ReentrancyGuard {
     IVault public immutable vault;
     IPositionNFT public immutable tickets;
 
-    uint16 public constant RAKE_BPS = 1000; // 10%
+    uint16 public constant RAKE_BPS = 600; // 6%
     uint64 public constant WINDOW_BLOCKS = 300; // ~2 min base
     uint64 public constant EXTEND_BLOCKS = 30; // anti-snipe bump per seize
     uint16 public constant STEP_BPS = 2000; // each seize costs 20% more

@@ -15,7 +15,7 @@ contract DiamondHands is IGame, ReentrancyGuard {
     IVault public immutable vault;
     IPositionNFT public immutable tickets;
 
-    uint16 public constant RAKE_BPS = 1000; // 10%
+    uint16 public constant RAKE_BPS = 600; // 6%
     uint64 public constant ACCEPT_EXPIRY = 10 minutes;
     uint64 public constant CRASH_BLOCKS = 900; // ~6 min on 400ms blocks
 

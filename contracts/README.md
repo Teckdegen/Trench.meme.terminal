@@ -3,7 +3,7 @@
 The fully onchain, PvP, pari-mutuel casino described in
 [`../casino.md`](../casino.md). No house bankroll, no operator, no server in the
 trust path — smart contracts run everything. The house only ever takes its
-**10% rake** and the pool when nobody wins.
+**6% rake** and the pool when nobody wins.
 
 ## Layout
 
@@ -22,7 +22,7 @@ src/
 ├── lib/
 │   └── Entropy.sol          duel commit-reveal + pool blockhash randomness
 ├── games/
-│   ├── DuelEngine.sol       generic 1v1 (unequal stakes, ±35% match band)
+│   ├── DuelEngine.sol       generic 1v1 (unequal stakes, ±10% match band)
 │   ├── MoonOrDoom.sol       50/50 flip (stake-weighted fair)
 │   ├── SendIt.sol           high-roll dice duel (stake-weighted)
 │   ├── PoolEngine.sol       generic pari-mutuel rounds
@@ -118,7 +118,7 @@ MILLION players with zero onchain matching loops.
 Flow: players `bet(dir)` at one of the 5 tiers → escrowed. After 5 minutes the
 bot reads the MON price, computes the full winner/loser pairing + payouts
 offchain, and calls `resolve(id, winners, amounts, winTickets, loseTickets,
-monPrice)`. The Vault caps total payout at the escrowed pool and skims the 10%
+monPrice)`. The Vault caps total payout at the escrowed pool and skims the 6%
 rake, so **the bot can never over-pay even if it computes wrong**, and the
 `monPrice` is recorded in the `Resolved` event for audit. If the bot ever goes
 down, anyone can `reclaim(id)` after 1 hour to refund every player their stake.

@@ -27,7 +27,7 @@ import {IPositionNFT} from "../interfaces/IPositionNFT.sol";
 ///           3. The bot calls `resolve(roundId, winners, amounts, monPrice)`.
 ///              The contract pays out via the Vault, which enforces
 ///              conservation (cannot pay more than the round escrowed) and
-///              skims the 10% house rake. The `monPrice` and the open/close
+///              skims the 6% house rake. The `monPrice` and the open/close
 ///              are recorded in events so every settlement is auditable.
 ///
 ///         TRUST: the bot is trusted to compute the pairing + price correctly,
@@ -41,7 +41,7 @@ contract PumpOrDump is IGame, ReentrancyGuard, Ownable {
     IPositionNFT public immutable tickets;
     address public resolver; // the trench bot
 
-    uint16 public constant RAKE_BPS = 1000; // 10%
+    uint16 public constant RAKE_BPS = 600; // 6%
     uint64 public constant ROUND_SECONDS = 5 minutes;
     uint64 public constant RECLAIM_AFTER = 1 hours; // bot-down safety net
 

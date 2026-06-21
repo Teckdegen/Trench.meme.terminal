@@ -38,20 +38,20 @@ Ethereum mainnet.
 
 ### Rake
 
-- A flat percentage (default **1000 bps = 10%**, configurable per game, stored in
+- A flat percentage (default **600 bps = 6%**, configurable per game, stored in
   the Vault) is skimmed from every settled pot and sent to the platform fee
   wallet (same wallet that receives trading fees).
 - Rake is the ONLY house revenue. No edge, no spread, no float games.
 
 ### The two payout structures
 
-**Duels (1v1 or small lobby).** Stakes do NOT have to be equal — a bet can
-match any opposing bet whose stake is within the match tolerance (default
-**35%**, `MATCH_TOLERANCE_BPS = 3500`, configurable). Unequal stakes ARE the
-odds: if A stakes 50 and B stakes 40, the pot is 90 — A risks 50 to win 40,
-B risks 40 to win 50. Winner takes the whole pot minus rake. This makes the
-open challenge boards liquid: you never wait for an exact stake twin, you
-take the closest opponent. Ties: reroll where the game allows it (dice,
+**Duels (1v1 or small lobby).** Stakes do NOT have to be exactly equal — a bet
+can match any opposing bet whose stake is within the match tolerance (default
+**10%**, `MATCH_TOLERANCE_BPS = 1000`, configurable). The ±10% band keeps
+matched bets close to even while still letting a duel fly without a perfect
+stake twin. Unequal stakes within the band ARE the odds: if A stakes 50 and B
+stakes 45, the pot is 95, winner takes it minus rake. This keeps the open
+challenge boards liquid: you take the closest opponent inside the band. Ties: reroll where the game allows it (dice,
 war); where it can't, the round settles as a push — rake is still taken,
 the remainder returns pro rata.
 
@@ -282,7 +282,7 @@ once** — there are no onchain matching loops, just escrow in and payout out.
    payout (their stake back + their matched loser's stake, minus rake).
 4. The bot calls `resolve(roundId, winners, amounts, winTickets, loseTickets,
    monPrice)`. The contract pays out through the Vault, which **caps total
-   payout at the round's escrowed pool and skims the 10% rake** — so the bot
+   payout at the round's escrowed pool and skims the 6% rake** — so the bot
    can never over-pay even if it computes wrong. The `monPrice` is recorded in
    the `Resolved` event for public audit.
    - close above the line → UP side wins each pair
@@ -327,7 +327,7 @@ raise(x)`, enforced order, per action clock (suggest 30s; timeout = auto
 check/fold so a disconnect never stalls the table). Blinds posted
 automatically each hand by the contract. Side pots computed onchain (this is
 the fiddly part — test exhaustively). Rake per pot, capped like real card
-rooms (10% capped at 5 MON per pot), no rake on hands that end preflop ("no flop,
+rooms (6% capped at 5 MON per pot), no rake on hands that end preflop ("no flop,
 no drop").
 
 **The hidden card problem.** Hole cards must stay secret during the hand but
@@ -453,7 +453,7 @@ house only rakes. Each maps to an existing engine or a tight standalone.
 | **Whale Throne** | King of the Hill | Standalone | Pay the (rising) price to `seize` the throne; your MON joins the pot, each takeover extends the window (anti-snipe). Whoever holds the throne when the window closes takes the whole pot — funded by everyone they dethroned. |
 | **Knife Catcher** | Musical Chairs | LobbyEngine (8) | 8 equal stakes. UI animates round-by-round eliminations; the contract draws one fair winner (equal 1/N odds) who takes the whole pot. |
 
-All eight obey the same invariants: 10% rake on every settled pot, house takes
+All eight obey the same invariants: 6% rake on every settled pot, house takes
 the pool when a game busts to nobody (Alpha Call collision, Diamond Hands
 double-hold, Exit Scam multi-dump), pull-payment claims, burn-on-resolve
 tickets, block-height timing with permissionless settlement.
@@ -574,8 +574,8 @@ liveness role:
 
 | Param | Default |
 |-------|---------|
-| Rake | 1000 bps (10%) |
-| Match tolerance (unequal stake duels) | 3500 bps (35%) |
+| Rake | 600 bps (6%) |
+| Match tolerance (unequal stake duels) | 1000 bps (10%) |
 | Duel expiry | 10 min |
 | Reveal window | 5 min |
 | Pool round cadence (roulette/lottery) | 60s, skip if <2 opposing bettors |

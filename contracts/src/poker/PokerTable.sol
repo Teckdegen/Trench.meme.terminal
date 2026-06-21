@@ -17,7 +17,7 @@ import {HandEval} from "./HandEval.sol";
 ///         Seat = Position NFT: sitting escrows the buy-in to the Vault and
 ///         mints a seat ticket holding your stack; standing burns it and pulls
 ///         your stack. Action clock auto-checks/folds a stalling player so the
-///         table never freezes. Rake: 10% of each contested pot, capped, with
+///         table never freezes. Rake: 6% of each contested pot, capped, with
 ///         "no flop, no drop".
 contract PokerTable is ReentrancyGuard {
     IVault public immutable vault;
@@ -25,7 +25,7 @@ contract PokerTable is ReentrancyGuard {
     IDealer public dealer; // swappable; governance can upgrade per table
 
     uint8 public constant SEATS = 2; // heads-up reference
-    uint16 public constant RAKE_BPS = 1000; // 10%
+    uint16 public constant RAKE_BPS = 600; // 6%
     uint64 public constant ACTION_CLOCK = 30 seconds;
 
     uint128 public immutable smallBlind;

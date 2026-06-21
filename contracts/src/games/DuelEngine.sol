@@ -21,8 +21,8 @@ abstract contract DuelEngine is IGame, ReentrancyGuard {
     IVault public immutable vault;
     IPositionNFT public immutable tickets;
 
-    uint16 public constant RAKE_BPS = 1000; // 10% house cut
-    uint16 public constant MATCH_TOLERANCE_BPS = 3500; // ±35% stake match band
+    uint16 public constant RAKE_BPS = 600; // 6% house cut
+    uint16 public constant MATCH_TOLERANCE_BPS = 1000; // ±10% stake match band
     uint64 public constant ACCEPT_EXPIRY = 10 minutes;
     uint64 public constant REVEAL_WINDOW = 5 minutes;
 

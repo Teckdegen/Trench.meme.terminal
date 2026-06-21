@@ -26,15 +26,16 @@ describe("Moon or Doom duel", () => {
   const commit = (label: string) =>
     ethers.keccak256(ethers.solidityPacked(["bytes32"], [ethers.id(label)]));
 
-  it("pays the winner the pot minus 10% rake and the house takes its cut", async () => {
+  it("pays the winner the pot minus 6% rake and the house takes its cut", async () => {
     const {vault, flip, alice, bob} = await deploy();
     await flip.connect(alice).post(0, commit("alice"), {value: ethers.parseEther("10")});
     await flip.connect(bob).accept(1, 1, commit("bob"), {value: ethers.parseEther("10")});
     await flip.connect(alice).reveal(1, secret("alice"));
     await flip.connect(bob).reveal(1, secret("bob")); // settles
+    // Pot = 20, rake = 6% = 1.2, winner gets 18.8.
     const total = (await vault.claimableOf(alice.address)) + (await vault.claimableOf(bob.address));
-    expect(total).to.equal(ethers.parseEther("18"));
-    expect(await vault.houseAccrued()).to.equal(ethers.parseEther("2"));
+    expect(total).to.equal(ethers.parseEther("18.8"));
+    expect(await vault.houseAccrued()).to.equal(ethers.parseEther("1.2"));
   });
 
   it("refunds an unmatched challenge with no rake", async () => {
@@ -47,22 +48,25 @@ describe("Moon or Doom duel", () => {
     expect(await vault.houseAccrued()).to.equal(0n);
   });
 
-  it("rejects a stake outside the 35% match band", async () => {
+  it("rejects a stake outside the 10% match band", async () => {
     const {flip, alice, bob} = await deploy();
     await flip.connect(alice).post(0, commit("alice"), {value: ethers.parseEther("10")});
+    // 12 is +20%, outside the ±10% band → revert.
     await expect(
-      flip.connect(bob).accept(1, 1, commit("bob"), {value: ethers.parseEther("20")}),
+      flip.connect(bob).accept(1, 1, commit("bob"), {value: ethers.parseEther("12")}),
     ).to.be.revertedWith("stake out of band");
   });
 
   it("matches unequal stakes within the band and pays pot minus rake", async () => {
     const {vault, flip, alice, bob} = await deploy();
     await flip.connect(alice).post(0, commit("alice"), {value: ethers.parseEther("10")});
-    await flip.connect(bob).accept(1, 1, commit("bob"), {value: ethers.parseEther("13")});
+    // 11 is +10%, inside the band.
+    await flip.connect(bob).accept(1, 1, commit("bob"), {value: ethers.parseEther("11")});
     await flip.connect(alice).reveal(1, secret("alice"));
     await flip.connect(bob).reveal(1, secret("bob"));
+    // Pot = 21, rake = 6% = 1.26, winner gets 19.74.
     const total = (await vault.claimableOf(alice.address)) + (await vault.claimableOf(bob.address));
-    expect(total).to.equal(ethers.parseEther("20.7"));
-    expect(await vault.houseAccrued()).to.equal(ethers.parseEther("2.3"));
+    expect(total).to.equal(ethers.parseEther("19.74"));
+    expect(await vault.houseAccrued()).to.equal(ethers.parseEther("1.26"));
   });
 });

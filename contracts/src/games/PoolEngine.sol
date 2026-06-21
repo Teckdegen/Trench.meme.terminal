@@ -19,7 +19,7 @@ abstract contract PoolEngine is IGame, ReentrancyGuard {
     IVault public immutable vault;
     IPositionNFT public immutable tickets;
 
-    uint16 public constant RAKE_BPS = 1000; // 10%
+    uint16 public constant RAKE_BPS = 600; // 6%
 
     enum Phase {
         BETTING,
