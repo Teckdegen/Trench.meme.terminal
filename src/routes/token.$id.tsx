@@ -2,6 +2,7 @@ import { createFileRoute, notFound, Link } from "@tanstack/react-router";
 import { CandleChart } from "@/components/Charts";
 import { MonLogo } from "@/components/MonLogo";
 import { TradingViewAdvancedChart } from "@/components/TradingViewAdvancedChart";
+import { GeckoTerminalChart } from "@/components/GeckoTerminalChart";
 import { fmtPct } from "@/lib/fmt";
 import { WalletLabel, HandleLink, UserAvatar } from "@/components/Handle";
 import { Copy, Settings, ChevronDown, Image as ImageIcon } from "lucide-react";
@@ -166,6 +167,8 @@ function TokenPage() {
   const blockCheck = blocklist.checkToken(t.addr, creatorOnChain);
   const isMobile = useIsMobile();
   const chartHeight = isMobile ? 300 : 480;
+  // Graduated/bonded tokens have a real DEX pool → use the GeckoTerminal embed.
+  const useGeckoChart = isContract(t.addr) && snapshot?.is_graduated === true;
 
   return (
     <div className="space-y-3">
@@ -211,21 +214,28 @@ function TokenPage() {
 
         <div className="grid grid-cols-1 xl:grid-cols-[1fr_320px]">
           <div className="border-b xl:border-b-0 xl:border-r border-border flex flex-col">
-            <div className="px-3 sm:px-4 py-2 border-b border-border flex items-center gap-2">
-              <div className="flex items-center gap-1.5 text-xs overflow-x-auto scrollbar-hide">
-                {(["3m", "5m", "15m", "1h", "4h", "1d"] as const).map((x) => (
-                  <button
-                    key={x}
-                    onClick={() => setTimeframe(x)}
-                    className={`h-7 px-2.5 rounded-md ${timeframe === x ? "bg-primary text-primary-foreground" : "bg-surface-2 text-muted-foreground"}`}
-                  >
-                    {x}
-                  </button>
-                ))}
+            {/* Graduated (bonded) tokens live on a real DEX pool → embed the
+                full GeckoTerminal chart (it has its own timeframe toolbar).
+                Bonding-curve tokens keep our native Nad.fun chart + timeframes. */}
+            {!useGeckoChart && (
+              <div className="px-3 sm:px-4 py-2 border-b border-border flex items-center gap-2">
+                <div className="flex items-center gap-1.5 text-xs overflow-x-auto scrollbar-hide">
+                  {(["3m", "5m", "15m", "1h", "4h", "1d"] as const).map((x) => (
+                    <button
+                      key={x}
+                      onClick={() => setTimeframe(x)}
+                      className={`h-7 px-2.5 rounded-md ${timeframe === x ? "bg-primary text-primary-foreground" : "bg-surface-2 text-muted-foreground"}`}
+                    >
+                      {x}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
             <div className="px-1 sm:px-2 py-2">
-              {isContract(t.addr) ? (
+              {useGeckoChart ? (
+                <GeckoTerminalChart token={t.addr} height={chartHeight} />
+              ) : isContract(t.addr) ? (
                 <TradingViewAdvancedChart token={t.addr} symbol={liveSymbol} interval={timeframe} height={chartHeight} />
               ) : (
                 <CandleChart height={isMobile ? 260 : 360} />

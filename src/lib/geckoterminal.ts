@@ -7,10 +7,37 @@
 //
 // Docs: https://www.geckoterminal.com/dex-api
 
+import { createServerFn } from "@tanstack/react-start";
 import type { BarResponse, ChartResolution } from "@/lib/nadfun/types";
 
 const GT_BASE = "https://api.geckoterminal.com/api/v2";
 const NETWORK = process.env.GECKOTERMINAL_NETWORK ?? "monad";
+
+// Resolve the embeddable GeckoTerminal pool for a graduated token. The browser
+// uses this to build the `geckoterminal.com/{network}/pools/{pool}?embed=1`
+// iframe. Server-side so the GT rate limit is shared and the network slug
+// stays a single source of truth. Cached briefly to avoid hammering GT.
+const poolCache = new Map<string, { pool: string | null; at: number }>();
+const POOL_TTL_MS = 60_000;
+
+export const fetchGeckoPool = createServerFn({ method: "GET" })
+  .inputValidator((d: { token: string }) => d)
+  .handler(async ({ data }): Promise<{ pool: string | null; network: string }> => {
+    const token = String(data.token ?? "").toLowerCase();
+    if (!/^0x[a-f0-9]{40}$/.test(token)) return { pool: null, network: NETWORK };
+    const cached = poolCache.get(token);
+    if (cached && Date.now() - cached.at < POOL_TTL_MS) {
+      return { pool: cached.pool, network: NETWORK };
+    }
+    let pool: string | null = null;
+    try {
+      pool = await topPoolForToken(token);
+    } catch {
+      pool = null;
+    }
+    poolCache.set(token, { pool, at: Date.now() });
+    return { pool, network: NETWORK };
+  });
 
 // GeckoTerminal accepts these timeframes:
 //   timeframe=minute, aggregate=1 | 5 | 15
