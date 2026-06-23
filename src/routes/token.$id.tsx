@@ -5,7 +5,7 @@ import { TradingViewAdvancedChart } from "@/components/TradingViewAdvancedChart"
 import { GeckoTerminalChart } from "@/components/GeckoTerminalChart";
 import { fmtPct } from "@/lib/fmt";
 import { WalletLabel, HandleLink, UserAvatar } from "@/components/Handle";
-import { Copy, Settings, ChevronDown, Image as ImageIcon } from "lucide-react";
+import { Copy, Check, Settings, ChevronDown, Image as ImageIcon } from "lucide-react";
 import { renderMentions } from "@/lib/renderMentions";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -59,7 +59,7 @@ export const Route = createFileRoute("/token/$id")({
   errorComponent: ({ error }) => <div className="p-8 text-down">{error.message}</div>,
 });
 
-const bottomTabs = ["Trades", "Holders", "Chat", "About"];
+const bottomTabs = ["Trades", "Holders", "Chat"];
 
 function TokenPage() {
   const t = Route.useLoaderData();
@@ -98,14 +98,9 @@ function TokenPage() {
   const liveVol    = market?.volume_usd != null
     ? fmtUsdShort(market.volume_usd)
     : snapLoading ? "…" : "—";
-  // Supply read straight from the token contract (APIs report it wrong).
-  // fmtAmount divides by 10^decimals, so pass the RAW supply + its decimals.
+  // Supply read straight from the token contract (APIs report it wrong) — used
+  // for an accurate market cap. We don't surface supply itself in the UI.
   const onchainSupply = useOnchainSupply(isContract(t.addr) ? t.addr : undefined);
-  const liveSupply = onchainSupply.raw != null
-    ? fmtAmount(onchainSupply.raw.toString(), onchainSupply.decimals)
-    : snapshot?.total_supply
-      ? fmtAmount(snapshot.total_supply)
-      : snapLoading ? "…" : "—";
   const liveMcap = (() => {
     const price = market?.price_usd;
     // Prefer on-chain supply; fall back to the API value only if the chain
@@ -422,6 +417,9 @@ function TokenPage() {
               rawAmount={rawAmount}
               expiry={expiry}
             />
+
+            {/* Token info — sits under the trade panel */}
+            <TokenInfo snapshot={snapshot} address={t.addr} />
           </aside>
         </div>
 
@@ -449,8 +447,6 @@ function TokenPage() {
             <TradesTab token={t.addr} enabled={activeTab === "Trades"} priceUsd={market?.price_usd ?? null} />
           ) : activeTab === "Holders" && isContract(t.addr) ? (
             <HoldersTab token={t.addr} enabled={activeTab === "Holders"} priceUsd={market?.price_usd ?? null} dev={creatorOnChain} />
-          ) : activeTab === "About" ? (
-            <AboutTab snapshot={snapshot} address={t.addr} symbol={liveSymbol} supply={liveSupply} />
           ) : (
             <div className="py-16 text-center text-sm text-muted-foreground">
               Select a tab above.
@@ -682,90 +678,71 @@ function TradesTab({ token, enabled, priceUsd: _priceUsd }: { token: string; ena
   );
 }
 
-// About — token description, socials, launch + supply facts.
-function AboutTab({
-  snapshot, address, symbol, supply,
-}: { snapshot: TokenSnapshot | null; address: string; symbol: string; supply: string }) {
-  if (!snapshot) {
-    return <div className="py-12 text-center text-sm text-muted-foreground">Loading…</div>;
-  }
-  const socials: { label: string; href: string }[] = [];
-  if (snapshot.twitter) socials.push({ label: "X / Twitter", href: snapshot.twitter });
-  if (snapshot.telegram) socials.push({ label: "Telegram", href: snapshot.telegram });
-  if (snapshot.website) socials.push({ label: "Website", href: snapshot.website });
+// Compact token info that sits under the Buy/Sell panel — description,
+// socials, a couple of facts, and the contract. No total supply.
+function TokenInfo({ snapshot, address }: { snapshot: TokenSnapshot | null; address: string }) {
+  const [copied, setCopied] = useState(false);
+  if (!snapshot) return null;
 
+  const hasDesc = !!snapshot.description?.trim();
+  const hasSocials = !!(snapshot.twitter || snapshot.telegram || snapshot.website);
   const launched = snapshot.created_at
-    ? new Date(snapshot.created_at * 1000).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })
+    ? new Date(snapshot.created_at * 1000).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
     : null;
 
-  const facts: { k: string; v: string }[] = [
-    { k: "Status", v: snapshot.is_graduated ? "Graduated (DEX)" : "Bonding curve" },
-    { k: "Total supply", v: supply },
-    { k: "Holders", v: snapshot.holder_count != null ? snapshot.holder_count.toLocaleString() : "—" },
-    { k: "Launched", v: launched ?? "—" },
-  ];
+  const copy = () => {
+    navigator.clipboard?.writeText(address);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1200);
+  };
 
   return (
-    <div className="p-3 sm:p-4 space-y-4 max-w-2xl">
-      {/* Header */}
-      <div className="flex items-center gap-3">
-        {snapshot.image_uri && (
-          <img src={snapshot.image_uri} alt={symbol} className="size-12 rounded-full object-cover" />
-        )}
-        <div className="min-w-0">
-          <p className="font-bold text-base truncate">{snapshot.name}</p>
-          <p className="text-xs text-muted-foreground">${symbol}</p>
-        </div>
-      </div>
+    <div className="rounded-2xl bg-surface-2 p-3 space-y-3 mt-1">
+      <p className="text-[11px] uppercase tracking-wide text-muted-foreground font-semibold">About</p>
 
-      {/* Description */}
-      {snapshot.description ? (
-        <p className="text-sm leading-relaxed text-foreground/90 whitespace-pre-wrap break-words">
+      {hasDesc ? (
+        <p className="text-xs leading-relaxed text-foreground/90 whitespace-pre-wrap break-words">
           {snapshot.description}
         </p>
       ) : (
-        <p className="text-sm text-muted-foreground italic">No description provided.</p>
+        <p className="text-xs text-muted-foreground italic">No description.</p>
       )}
 
-      {/* Socials */}
-      {socials.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          {socials.map((s) => (
-            <a
-              key={s.label}
-              href={s.href}
-              target="_blank"
-              rel="noreferrer"
-              className="h-8 px-3 rounded-full bg-surface-2 hover:bg-white/10 text-xs font-semibold inline-flex items-center gap-1.5"
-            >
-              {s.label} <ExternalLinkIcon />
-            </a>
-          ))}
+      {hasSocials && (
+        <div className="flex flex-wrap gap-1.5">
+          {snapshot.twitter && <SocialPill label="X" href={snapshot.twitter} />}
+          {snapshot.telegram && <SocialPill label="Telegram" href={snapshot.telegram} />}
+          {snapshot.website && <SocialPill label="Website" href={snapshot.website} />}
         </div>
       )}
 
-      {/* Facts */}
-      <div className="grid grid-cols-2 gap-2">
-        {facts.map((f) => (
-          <div key={f.k} className="rounded-xl bg-surface-2 px-3 py-2.5">
-            <div className="text-[11px] text-muted-foreground">{f.k}</div>
-            <div className="text-sm font-semibold mt-0.5 truncate">{f.v}</div>
-          </div>
-        ))}
+      <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+        <span>{snapshot.is_graduated ? "Graduated · DEX" : "Bonding curve"}</span>
+        {launched && <span>Launched {launched}</span>}
       </div>
 
-      {/* Contract */}
-      <div className="rounded-xl bg-surface-2 px-3 py-2.5">
-        <div className="text-[11px] text-muted-foreground">Contract</div>
-        <button
-          onClick={() => navigator.clipboard?.writeText(address)}
-          className="text-xs font-mono mt-0.5 inline-flex items-center gap-1.5 hover:text-primary break-all text-left"
-          title="Copy contract address"
-        >
-          {address} <Copy className="size-3 shrink-0" />
-        </button>
-      </div>
+      <button
+        onClick={copy}
+        title="Copy contract address"
+        className="w-full text-left text-[10px] font-mono text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 break-all"
+      >
+        {address}
+        {copied ? <Check className="size-3 shrink-0 text-up" /> : <Copy className="size-3 shrink-0" />}
+      </button>
     </div>
+  );
+}
+
+function SocialPill({ label, href }: { label: string; href: string }) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      className="h-7 px-2.5 rounded-full bg-white/5 hover:bg-white/10 text-[11px] font-semibold inline-flex items-center gap-1"
+    >
+      {label} <ExternalLinkIcon />
+    </a>
   );
 }
 
