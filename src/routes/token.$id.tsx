@@ -11,7 +11,6 @@ import { useEffect, useRef, useState } from "react";
 import {
   fetchTokenSnapshot,
   useTokenSnapshot,
-  useTokenPriceChanges,
   useTokenTrades,
   useTokenHolders,
   useTokenChat,
@@ -22,7 +21,7 @@ import {
 import { useUnifiedQuote } from "@/lib/swap-router";
 import { useSwapExecute, createLimitOrder } from "@/lib/swap-execute";
 import { useMe } from "@/lib/useMe";
-import { useMonBalance, useTokenBalance } from "@/lib/wallet-tx";
+import { useMonBalance, useTokenBalance, useOnchainSupply } from "@/lib/wallet-tx";
 import { useDocumentTitle } from "@/lib/useDocumentTitle";
 import { useBlocklist } from "@/lib/blocklist";
 import { BlocklistWarning } from "@/components/BlocklistWarning";
@@ -99,15 +98,23 @@ function TokenPage() {
   const liveVol    = market?.volume_usd != null
     ? fmtUsdShort(market.volume_usd)
     : snapLoading ? "…" : "—";
-  const liveSupply = snapshot?.total_supply
-    ? fmtAmount(snapshot.total_supply)
-    : snapLoading ? "…" : "—";
+  // Supply read straight from the token contract (APIs report it wrong).
+  // fmtAmount divides by 10^decimals, so pass the RAW supply + its decimals.
+  const onchainSupply = useOnchainSupply(isContract(t.addr) ? t.addr : undefined);
+  const liveSupply = onchainSupply.raw != null
+    ? fmtAmount(onchainSupply.raw.toString(), onchainSupply.decimals)
+    : snapshot?.total_supply
+      ? fmtAmount(snapshot.total_supply)
+      : snapLoading ? "…" : "—";
   const liveMcap = (() => {
     const price = market?.price_usd;
-    const supply = snapshot?.total_supply;
-    if (price != null && supply) {
-      const tokens = Number(supply) / 1e18;
-      if (isFinite(tokens) && tokens > 0) return fmtUsdShort(price * tokens);
+    // Prefer on-chain supply; fall back to the API value only if the chain
+    // read hasn't resolved yet.
+    const tokens = onchainSupply.value != null
+      ? onchainSupply.value
+      : snapshot?.total_supply ? Number(snapshot.total_supply) / 1e18 : null;
+    if (price != null && tokens != null && isFinite(tokens) && tokens > 0) {
+      return fmtUsdShort(price * tokens);
     }
     return snapLoading ? "…" : "—";
   })();
@@ -170,8 +177,6 @@ function TokenPage() {
   const chartHeight = isMobile ? 300 : 480;
   // Graduated/bonded tokens have a real DEX pool → use the GeckoTerminal embed.
   const useGeckoChart = isContract(t.addr) && snapshot?.is_graduated === true;
-  // Multi-window price change (5m/1h/6h/12h/24h) from OHLCV.
-  const priceChanges = useTokenPriceChanges(isContract(t.addr) ? t.addr : undefined);
 
   return (
     <div className="space-y-3">
@@ -212,29 +217,6 @@ function TokenPage() {
             <TopStat label="Volume" mobileLabel="Vol" value={liveVol} sub="24h · USD" />
             <TopStat label="Market Cap" mobileLabel="MCap" value={liveMcap} />
             <TopStat label="24h" value={fmtPct(liveP24h)} positive={liveP24h >= 0} />
-          </div>
-
-          {/* Multi-window price change — 5m / 1h / 6h / 12h / 24h from OHLCV */}
-          <div className="mt-3 grid grid-cols-5 gap-1.5">
-            {([
-              ["5m", priceChanges?.m5],
-              ["1h", priceChanges?.h1],
-              ["6h", priceChanges?.h6],
-              ["12h", priceChanges?.h12],
-              ["24h", priceChanges?.h24],
-            ] as const).map(([label, val]) => {
-              const up = (val ?? 0) >= 0;
-              return (
-                <div key={label} className="rounded-lg bg-surface-2 px-1.5 py-1.5 text-center">
-                  <div className="text-[10px] uppercase text-muted-foreground">{label}</div>
-                  <div className={`text-xs font-bold tabular-nums mt-0.5 ${
-                    val == null ? "text-muted-foreground" : up ? "text-up" : "text-down"
-                  }`}>
-                    {val == null ? "—" : `${up ? "+" : ""}${val.toFixed(2)}%`}
-                  </div>
-                </div>
-              );
-            })}
           </div>
         </div>
 
@@ -468,7 +450,7 @@ function TokenPage() {
           ) : activeTab === "Holders" && isContract(t.addr) ? (
             <HoldersTab token={t.addr} enabled={activeTab === "Holders"} priceUsd={market?.price_usd ?? null} dev={creatorOnChain} />
           ) : activeTab === "About" ? (
-            <AboutTab snapshot={snapshot} address={t.addr} symbol={liveSymbol} />
+            <AboutTab snapshot={snapshot} address={t.addr} symbol={liveSymbol} supply={liveSupply} />
           ) : (
             <div className="py-16 text-center text-sm text-muted-foreground">
               Select a tab above.
@@ -702,8 +684,8 @@ function TradesTab({ token, enabled, priceUsd: _priceUsd }: { token: string; ena
 
 // About — token description, socials, launch + supply facts.
 function AboutTab({
-  snapshot, address, symbol,
-}: { snapshot: TokenSnapshot | null; address: string; symbol: string }) {
+  snapshot, address, symbol, supply,
+}: { snapshot: TokenSnapshot | null; address: string; symbol: string; supply: string }) {
   if (!snapshot) {
     return <div className="py-12 text-center text-sm text-muted-foreground">Loading…</div>;
   }
@@ -715,7 +697,6 @@ function AboutTab({
   const launched = snapshot.created_at
     ? new Date(snapshot.created_at * 1000).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })
     : null;
-  const supply = snapshot.total_supply ? fmtAmount(snapshot.total_supply) : "—";
 
   const facts: { k: string; v: string }[] = [
     { k: "Status", v: snapshot.is_graduated ? "Graduated (DEX)" : "Bonding curve" },

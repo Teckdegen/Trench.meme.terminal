@@ -24,8 +24,43 @@ const ERC20 = parseAbi([
   "function decimals() view returns (uint8)",
   "function symbol() view returns (string)",
   "function name() view returns (string)",
+  "function totalSupply() view returns (uint256)",
   "function transfer(address to, uint256 amount) returns (bool)",
 ]);
+
+// ─────────────── On-chain total supply ───────────────────────────────
+// The Nad.fun / DexScreener APIs report supply inconsistently (sometimes the
+// curve reserve, sometimes a stale value). Read it straight from the token
+// contract so the supply + market cap are always correct.
+export function useOnchainSupply(token: string | undefined) {
+  const [supply, setSupply] = useState<{ raw: bigint; decimals: number } | null>(null);
+
+  useEffect(() => {
+    if (!token || !/^0x[a-fA-F0-9]{40}$/.test(token)) { setSupply(null); return; }
+    let cancel = false;
+    (async () => {
+      try {
+        const [ts, d] = await Promise.all([
+          publicClient.readContract({
+            address: token as Address, abi: ERC20, functionName: "totalSupply",
+          }) as Promise<bigint>,
+          publicClient.readContract({
+            address: token as Address, abi: ERC20, functionName: "decimals",
+          }).catch(() => 18) as Promise<number>,
+        ]);
+        if (!cancel) setSupply({ raw: ts, decimals: Number(d) });
+      } catch (e) {
+        console.warn("[supply]", e);
+        if (!cancel) setSupply(null);
+      }
+    })();
+    return () => { cancel = true; };
+  }, [token]);
+
+  // Human-readable supply (raw / 10^decimals).
+  const value = supply ? Number(supply.raw) / 10 ** supply.decimals : null;
+  return { raw: supply?.raw ?? null, decimals: supply?.decimals ?? 18, value };
+}
 
 // ─────────────── Native MON balance ──────────────────────────────────
 export function useMonBalance(me: string | undefined) {
