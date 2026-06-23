@@ -397,7 +397,14 @@ function PairCard({ row, mode, quickBuyMon }: { row: DiscoveryRow; mode: ColumnK
             <div className="text-right shrink-0">
               <div className="text-[9px] text-muted-foreground">MC / Liq</div>
               <div className="text-sm font-bold text-up">{fmtMc(row)}</div>
-              <div className="text-[10px] text-muted-foreground">Vol <span className="text-foreground">{fmtVol(row.volumeUsd)}</span></div>
+              <div className="text-[10px] text-muted-foreground inline-flex items-center gap-1.5">
+                <span>Vol <span className="text-foreground">{fmtVol(row.volumeUsd)}</span></span>
+                {row.priceChange24h != null && (
+                  <span className={row.priceChange24h >= 0 ? "text-up font-semibold" : "text-down font-semibold"}>
+                    {`${row.priceChange24h >= 0 ? "+" : ""}${row.priceChange24h.toFixed(1)}%`}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
 

@@ -36,6 +36,12 @@ export type TokenSnapshot = {
   is_graduated: boolean;
   total_supply: string | null;
   market: TokenMarketSnap | null;
+  description: string | null;
+  twitter: string | null;
+  telegram: string | null;
+  website: string | null;
+  created_at: number | null;   // unix seconds — token launch time
+  holder_count: number | null;
 };
 
 export type IndexedTrade = {
@@ -112,6 +118,12 @@ function mapNadfunToSnapshot(
     creator_address: ti?.creator?.account_id?.toLowerCase() || null,
     is_graduated: !!ti?.is_graduated,
     total_supply: mi?.total_supply != null ? String(mi.total_supply) : null,
+    description: ti?.description || null,
+    twitter: ti?.twitter || null,
+    telegram: ti?.telegram || null,
+    website: ti?.website || null,
+    created_at: ti?.created_at != null ? Number(ti.created_at) : null,
+    holder_count: mi?.holder_count != null ? Number(mi.holder_count) : null,
     market: {
       price_usd: priceUsd,
       volume_usd: volumeToUsd(mi?.volume, mi, monUsd),

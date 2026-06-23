@@ -60,7 +60,7 @@ export const Route = createFileRoute("/token/$id")({
   errorComponent: ({ error }) => <div className="p-8 text-down">{error.message}</div>,
 });
 
-const bottomTabs = ["Trades", "Holders", "Chat"];
+const bottomTabs = ["Trades", "Holders", "Chat", "About"];
 
 function TokenPage() {
   const t = Route.useLoaderData();
@@ -467,6 +467,8 @@ function TokenPage() {
             <TradesTab token={t.addr} enabled={activeTab === "Trades"} priceUsd={market?.price_usd ?? null} />
           ) : activeTab === "Holders" && isContract(t.addr) ? (
             <HoldersTab token={t.addr} enabled={activeTab === "Holders"} priceUsd={market?.price_usd ?? null} dev={creatorOnChain} />
+          ) : activeTab === "About" ? (
+            <AboutTab snapshot={snapshot} address={t.addr} symbol={liveSymbol} />
           ) : (
             <div className="py-16 text-center text-sm text-muted-foreground">
               Select a tab above.
@@ -698,6 +700,102 @@ function TradesTab({ token, enabled, priceUsd: _priceUsd }: { token: string; ena
   );
 }
 
+// About — token description, socials, launch + supply facts.
+function AboutTab({
+  snapshot, address, symbol,
+}: { snapshot: TokenSnapshot | null; address: string; symbol: string }) {
+  if (!snapshot) {
+    return <div className="py-12 text-center text-sm text-muted-foreground">Loading…</div>;
+  }
+  const socials: { label: string; href: string }[] = [];
+  if (snapshot.twitter) socials.push({ label: "X / Twitter", href: snapshot.twitter });
+  if (snapshot.telegram) socials.push({ label: "Telegram", href: snapshot.telegram });
+  if (snapshot.website) socials.push({ label: "Website", href: snapshot.website });
+
+  const launched = snapshot.created_at
+    ? new Date(snapshot.created_at * 1000).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })
+    : null;
+  const supply = snapshot.total_supply ? fmtAmount(snapshot.total_supply) : "—";
+
+  const facts: { k: string; v: string }[] = [
+    { k: "Status", v: snapshot.is_graduated ? "Graduated (DEX)" : "Bonding curve" },
+    { k: "Total supply", v: supply },
+    { k: "Holders", v: snapshot.holder_count != null ? snapshot.holder_count.toLocaleString() : "—" },
+    { k: "Launched", v: launched ?? "—" },
+  ];
+
+  return (
+    <div className="p-3 sm:p-4 space-y-4 max-w-2xl">
+      {/* Header */}
+      <div className="flex items-center gap-3">
+        {snapshot.image_uri && (
+          <img src={snapshot.image_uri} alt={symbol} className="size-12 rounded-full object-cover" />
+        )}
+        <div className="min-w-0">
+          <p className="font-bold text-base truncate">{snapshot.name}</p>
+          <p className="text-xs text-muted-foreground">${symbol}</p>
+        </div>
+      </div>
+
+      {/* Description */}
+      {snapshot.description ? (
+        <p className="text-sm leading-relaxed text-foreground/90 whitespace-pre-wrap break-words">
+          {snapshot.description}
+        </p>
+      ) : (
+        <p className="text-sm text-muted-foreground italic">No description provided.</p>
+      )}
+
+      {/* Socials */}
+      {socials.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {socials.map((s) => (
+            <a
+              key={s.label}
+              href={s.href}
+              target="_blank"
+              rel="noreferrer"
+              className="h-8 px-3 rounded-full bg-surface-2 hover:bg-white/10 text-xs font-semibold inline-flex items-center gap-1.5"
+            >
+              {s.label} <ExternalLinkIcon />
+            </a>
+          ))}
+        </div>
+      )}
+
+      {/* Facts */}
+      <div className="grid grid-cols-2 gap-2">
+        {facts.map((f) => (
+          <div key={f.k} className="rounded-xl bg-surface-2 px-3 py-2.5">
+            <div className="text-[11px] text-muted-foreground">{f.k}</div>
+            <div className="text-sm font-semibold mt-0.5 truncate">{f.v}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Contract */}
+      <div className="rounded-xl bg-surface-2 px-3 py-2.5">
+        <div className="text-[11px] text-muted-foreground">Contract</div>
+        <button
+          onClick={() => navigator.clipboard?.writeText(address)}
+          className="text-xs font-mono mt-0.5 inline-flex items-center gap-1.5 hover:text-primary break-all text-left"
+          title="Copy contract address"
+        >
+          {address} <Copy className="size-3 shrink-0" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ExternalLinkIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+      <path d="M7 17 17 7M9 7h8v8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 // Badge shown next to the token creator's wallet in the holders list.
 function DevTag() {
   return (
@@ -710,8 +808,11 @@ function DevTag() {
   );
 }
 
+const HOLDERS_PAGE_SIZE = 10;
+
 function HoldersTab({ token, enabled, priceUsd, dev }: { token: string; enabled: boolean; priceUsd: number | null; dev?: string | null }) {
   const { holders, loading } = useTokenHolders(token, enabled);
+  const [page, setPage] = useState(0);
   const devAddr = dev?.toLowerCase() ?? null;
   const isDev = (a: string) => !!devAddr && a.toLowerCase() === devAddr;
   if (!SUPABASE_ENABLED) {
@@ -721,17 +822,21 @@ function HoldersTab({ token, enabled, priceUsd, dev }: { token: string; enabled:
   if (holders.length === 0) return <div className="py-12 text-center text-sm text-muted-foreground">No holders</div>;
   const totalBalance = holders.reduce((s, h) => s + Number(h.balance), 0);
   const px = priceUsd ?? 0;
+  const pageCount = Math.ceil(holders.length / HOLDERS_PAGE_SIZE);
+  const safePage = Math.min(page, pageCount - 1);
+  const start = safePage * HOLDERS_PAGE_SIZE;
+  const paged = holders.slice(start, start + HOLDERS_PAGE_SIZE);
   return (
     <>
       <ul className="md:hidden divide-y divide-border/50">
-        {holders.map((h, i) => {
+        {paged.map((h, i) => {
           const bal = Number(h.balance);
           const usd = (bal / 1e18) * px;
           const pct = totalBalance > 0 ? (bal / totalBalance) * 100 : 0;
           return (
             <li key={h.account_address} className="px-3 py-3 space-y-2">
               <div className="flex items-center gap-2 min-w-0">
-                <span className="text-[11px] text-muted-foreground w-5 shrink-0">{i + 1}</span>
+                <span className="text-[11px] text-muted-foreground w-5 shrink-0">{start + i + 1}</span>
                 <WalletLabel address={h.account_address} className="text-sm font-medium block truncate min-w-0 hover:underline" />
                 {isDev(h.account_address) && <DevTag />}
               </div>
@@ -759,13 +864,13 @@ function HoldersTab({ token, enabled, priceUsd, dev }: { token: string; enabled:
             </tr>
           </thead>
           <tbody>
-            {holders.map((h, i) => {
+            {paged.map((h, i) => {
               const bal = Number(h.balance);
               const usd = (bal / 1e18) * px;
               const pct = totalBalance > 0 ? (bal / totalBalance) * 100 : 0;
               return (
                 <tr key={h.account_address} className="border-b border-border/50 row-hover">
-                  <td className="px-3 py-2.5 text-muted-foreground">{i + 1}</td>
+                  <td className="px-3 py-2.5 text-muted-foreground">{start + i + 1}</td>
                   <td className="px-3 py-2.5 max-w-[220px]">
                     <div className="flex items-center gap-1.5 min-w-0">
                       <WalletLabel address={h.account_address} className="text-xs block truncate hover:underline" />
@@ -788,7 +893,32 @@ function HoldersTab({ token, enabled, priceUsd, dev }: { token: string; enabled:
           </tbody>
         </table>
       </div>
+      <Pager page={safePage} pageCount={pageCount} onPage={setPage} />
     </>
+  );
+}
+
+// Shared 10-per-page pager. Hidden when there's only one page.
+function Pager({ page, pageCount, onPage }: { page: number; pageCount: number; onPage: (p: number) => void }) {
+  if (pageCount <= 1) return null;
+  return (
+    <div className="flex items-center justify-center gap-3 py-3 border-t border-border">
+      <button
+        onClick={() => onPage(Math.max(0, page - 1))}
+        disabled={page === 0}
+        className="h-8 px-3 rounded-lg bg-surface-2 text-xs font-semibold disabled:opacity-40 hover:bg-white/10"
+      >
+        Prev
+      </button>
+      <span className="text-xs text-muted-foreground tabular-nums">{page + 1} / {pageCount}</span>
+      <button
+        onClick={() => onPage(Math.min(pageCount - 1, page + 1))}
+        disabled={page >= pageCount - 1}
+        className="h-8 px-3 rounded-lg bg-surface-2 text-xs font-semibold disabled:opacity-40 hover:bg-white/10"
+      >
+        Next
+      </button>
+    </div>
   );
 }
 
@@ -874,6 +1004,7 @@ function TokenChat({ tokenAddress, symbol, enabled }: { tokenAddress: string; sy
   const [sentiment, setSentiment] = useState<"bullish" | "bearish" | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [chatPage, setChatPage] = useState(0);
 
   const sendBody = async (body: string) => {
     if (SUPABASE_ENABLED) {
@@ -925,6 +1056,15 @@ function TokenChat({ tokenAddress, symbol, enabled }: { tokenAddress: string; sy
         body: m.body,
         created_at: new Date(m.ts).toISOString(),
       }));
+
+  // 10 messages per page so the thread doesn't run forever.
+  const CHAT_PAGE_SIZE = 10;
+  const chatPageCount = Math.max(1, Math.ceil(msgs.length / CHAT_PAGE_SIZE));
+  const safeChatPage = Math.min(chatPage, chatPageCount - 1);
+  const pagedMsgs = msgs.slice(
+    safeChatPage * CHAT_PAGE_SIZE,
+    safeChatPage * CHAT_PAGE_SIZE + CHAT_PAGE_SIZE,
+  );
 
   return (
     <div>
@@ -1007,7 +1147,7 @@ function TokenChat({ tokenAddress, symbol, enabled }: { tokenAddress: string; sy
         {!sbLoading && msgs.length === 0 && (
           <li className="px-4 py-8 text-center text-xs text-muted-foreground">No messages yet — be first.</li>
         )}
-        {msgs.map((m) => {
+        {pagedMsgs.map((m) => {
           const mine = me && m.sender_address === me.toLowerCase();
           const bullish = m.body.startsWith("▲");
           const bearish = m.body.startsWith("▼");
@@ -1041,6 +1181,7 @@ function TokenChat({ tokenAddress, symbol, enabled }: { tokenAddress: string; sy
           );
         })}
       </ul>
+      <Pager page={safeChatPage} pageCount={chatPageCount} onPage={setChatPage} />
     </div>
   );
 }
