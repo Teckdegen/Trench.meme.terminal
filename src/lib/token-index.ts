@@ -283,6 +283,30 @@ export function useTokenPriceChanges(token: string | undefined) {
   return changes;
 }
 
+/** Batched price-change deltas for the Explore list (keyed by lowercase addr). */
+export function useExplorePriceChanges(tokens: string[]) {
+  const [map, setMap] = useState<Record<string, PriceChanges>>({});
+  // Stable key so we only refetch when the visible token set changes.
+  const key = tokens.map((t) => t.toLowerCase()).slice(0, 50).join(",");
+
+  useEffect(() => {
+    if (!key) return;
+    let cancel = false;
+    const run = async () => {
+      try {
+        const { fetchPriceChangesBatch } = await import("./nadfun/server");
+        const r = await fetchPriceChangesBatch({ data: { tokens: key.split(",") } });
+        if (!cancel) setMap((prev) => ({ ...prev, ...r }));
+      } catch { /* keep last values */ }
+    };
+    run();
+    const iv = setInterval(run, 60_000); // cached server-side; 60s is plenty
+    return () => { cancel = true; clearInterval(iv); };
+  }, [key]);
+
+  return map;
+}
+
 export function useTokenTrades(token: string | undefined, enabled: boolean, limit = 50) {
   const [trades, setTrades] = useState<IndexedTrade[]>([]);
   const [loading, setLoading] = useState(false);

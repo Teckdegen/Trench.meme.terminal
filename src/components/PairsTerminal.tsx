@@ -17,6 +17,7 @@ import {
   SlidersHorizontal, X,
 } from "lucide-react";
 import { useMe } from "@/lib/useMe";
+import { useExplorePriceChanges, type PriceChanges } from "@/lib/token-index";
 import { useBlocklist } from "@/lib/blocklist";
 import { useSwapExecute } from "@/lib/swap-execute";
 import { MonLogo } from "@/components/MonLogo";
@@ -696,6 +697,11 @@ function ExploreView({
     );
   }, [sorted, q, filters]);
 
+  // OHLCV-derived 5M/1H/6H/12H/24H changes for the visible tokens (top 50,
+  // cached server-side). Recomputed only when the visible set changes.
+  const changeTokens = useMemo(() => filtered.slice(0, 50).map((r) => r.address), [filtered]);
+  const changes = useExplorePriceChanges(changeTokens);
+
   return (
     <div className="bg-background">
       {/* Sub-tabs + search + quick-buy */}
@@ -738,11 +744,15 @@ function ExploreView({
           <thead>
             <tr className="text-[10px] uppercase tracking-wide text-muted-foreground border-b border-white/5">
               <th className="text-left  px-3 py-2 font-medium">Token</th>
-              <SortTh label="M/C"     k="mcap"   sort={sort} onSort={toggleSort} />
-              <SortTh label="Liq"     k="liq"    sort={sort} onSort={toggleSort} />
-              <SortTh label="Price %" k="change" sort={sort} onSort={toggleSort} />
-              <SortTh label="Vol"     k="vol"    sort={sort} onSort={toggleSort} />
-              <SortTh label="Age"     k="age"    sort={sort} onSort={toggleSort} />
+              <SortTh label="M/C" k="mcap" sort={sort} onSort={toggleSort} />
+              <th className="text-right px-2 py-2 font-medium">5M</th>
+              <th className="text-right px-2 py-2 font-medium">1H</th>
+              <th className="text-right px-2 py-2 font-medium">6H</th>
+              <th className="text-right px-2 py-2 font-medium">12H</th>
+              <th className="text-right px-2 py-2 font-medium">24H</th>
+              <SortTh label="Vol" k="vol" sort={sort} onSort={toggleSort} />
+              <SortTh label="Liq" k="liq" sort={sort} onSort={toggleSort} />
+              <SortTh label="Age" k="age" sort={sort} onSort={toggleSort} />
               <th className="text-right px-3 py-2 font-medium pr-4">Buy</th>
             </tr>
           </thead>
@@ -751,9 +761,11 @@ function ExploreView({
               Array.from({ length: 8 }).map((_, i) => <ExploreRowSkeleton key={`skel-${i}`} />)
             )}
             {!loading && filtered.length === 0 && (
-              <tr><td colSpan={7} className="px-3 py-12 text-center text-muted-foreground text-xs">No tokens match.</td></tr>
+              <tr><td colSpan={11} className="px-3 py-12 text-center text-muted-foreground text-xs">No tokens match.</td></tr>
             )}
-            {filtered.map((r) => <ExploreRow key={r.address} row={r} quickBuyMon={quickBuy} />)}
+            {filtered.map((r) => (
+              <ExploreRow key={r.address} row={r} quickBuyMon={quickBuy} changes={changes[r.address.toLowerCase()]} />
+            ))}
           </tbody>
         </table>
       </div>
@@ -790,22 +802,31 @@ function ExploreView({
           <li className="px-4 py-12 text-center text-xs text-muted-foreground">No tokens match.</li>
         )}
         {filtered.map((r) => (
-          <ExploreMobileCard key={`m-${r.address}`} row={r} quickBuyMon={quickBuy} />
+          <ExploreMobileCard key={`m-${r.address}`} row={r} quickBuyMon={quickBuy} changes={changes[r.address.toLowerCase()]} />
         ))}
       </ul>
     </div>
   );
 }
 
-// Mobile card — denser, drops less-critical columns (Holders, Liq) and
-// stacks Price%/MC/Vol horizontally under the token row so users see
-// everything that matters above the fold.
-function ExploreMobileCard({ row, quickBuyMon }: { row: DiscoveryRow; quickBuyMon: number }) {
+// One labelled price-change chip for the mobile card.
+function DeltaChip({ label, v }: { label: string; v: number | null | undefined }) {
+  const cls = v == null ? "text-muted-foreground" : v >= 0 ? "text-up" : "text-down";
+  return (
+    <div className="rounded-md bg-white/[0.04] py-1 text-center">
+      <div className="text-[8px] uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className={`text-[11px] font-bold tabular-nums leading-tight ${cls}`}>
+        {v == null ? "—" : `${v >= 0 ? "+" : ""}${v.toFixed(1)}%`}
+      </div>
+    </div>
+  );
+}
+
+// Mobile card — token row + MC/Vol, then a silky 5-window price-change strip.
+function ExploreMobileCard({ row, quickBuyMon, changes }: { row: DiscoveryRow; quickBuyMon: number; changes?: PriceChanges }) {
   const me = useMe();
   const { run, pending } = useSwapExecute();
   const color = tokenColor(row.symbol);
-  const change = row.priceChange24h;
-  const changeColor = change == null ? "text-muted-foreground" : change >= 0 ? "text-up" : "text-down";
 
   const buy = async (e: React.MouseEvent) => {
     e.preventDefault(); e.stopPropagation();
@@ -854,9 +875,7 @@ function ExploreMobileCard({ row, quickBuyMon }: { row: DiscoveryRow; quickBuyMo
             <div className="mt-0.5 flex items-center gap-3 text-[11px] tabular-nums">
               <span><span className="text-muted-foreground">MC </span><b>{fmtMc(row)}</b></span>
               <span><span className="text-muted-foreground">V </span><b>{fmtVol(row.volumeUsd)}</b></span>
-              <span className={`font-bold ${changeColor}`}>
-                {change == null ? "—" : `${change >= 0 ? "+" : ""}${change.toFixed(1)}%`}
-              </span>
+              <span><span className="text-muted-foreground">Liq </span><b>{fmtVol(row.liquidityUsd)}</b></span>
             </div>
           </div>
           <button
@@ -867,6 +886,15 @@ function ExploreMobileCard({ row, quickBuyMon }: { row: DiscoveryRow; quickBuyMo
             <MonLogo size={16} />
             {pending ? "…" : quickBuyMon}
           </button>
+        </div>
+
+        {/* 5-window price-change strip */}
+        <div className="mt-2 grid grid-cols-5 gap-1">
+          <DeltaChip label="5m" v={changes?.m5} />
+          <DeltaChip label="1h" v={changes?.h1} />
+          <DeltaChip label="6h" v={changes?.h6} />
+          <DeltaChip label="12h" v={changes?.h12} />
+          <DeltaChip label="24h" v={changes?.h24 ?? row.priceChange24h} />
         </div>
       </Link>
     </li>
@@ -912,12 +940,20 @@ function ExploreRowSkeleton() {
   );
 }
 
-function ExploreRow({ row, quickBuyMon }: { row: DiscoveryRow; quickBuyMon: number }) {
+// One price-change cell (e.g. 5M). Green/red, "—" until data arrives.
+function DeltaCell({ v }: { v: number | null | undefined }) {
+  const cls = v == null ? "text-muted-foreground" : v >= 0 ? "text-up" : "text-down";
+  return (
+    <td className={`px-2 py-2.5 text-right tabular-nums font-semibold ${cls}`}>
+      {v == null ? "—" : `${v >= 0 ? "+" : ""}${v.toFixed(2)}%`}
+    </td>
+  );
+}
+
+function ExploreRow({ row, quickBuyMon, changes }: { row: DiscoveryRow; quickBuyMon: number; changes?: PriceChanges }) {
   const me = useMe();
   const { run, pending } = useSwapExecute();
   const color = tokenColor(row.symbol);
-  const change = row.priceChange24h;
-  const changeColor = change == null ? "text-muted-foreground" : change >= 0 ? "text-up" : "text-down";
 
   const buy = async (e: React.MouseEvent) => {
     e.preventDefault();
@@ -965,11 +1001,13 @@ function ExploreRow({ row, quickBuyMon }: { row: DiscoveryRow; quickBuyMon: numb
         </Link>
       </td>
       <td className="px-3 py-2.5 text-right tabular-nums">{fmtMc(row)}</td>
-      <td className="px-3 py-2.5 text-right tabular-nums">{fmtVol(row.liquidityUsd)}</td>
-      <td className={`px-3 py-2.5 text-right tabular-nums font-semibold ${changeColor}`}>
-        {change == null ? "—" : `${change >= 0 ? "+" : ""}${change.toFixed(2)}%`}
-      </td>
+      <DeltaCell v={changes?.m5} />
+      <DeltaCell v={changes?.h1} />
+      <DeltaCell v={changes?.h6} />
+      <DeltaCell v={changes?.h12} />
+      <DeltaCell v={changes?.h24 ?? row.priceChange24h} />
       <td className="px-3 py-2.5 text-right tabular-nums">{fmtVol(row.volumeUsd)}</td>
+      <td className="px-3 py-2.5 text-right tabular-nums">{fmtVol(row.liquidityUsd)}</td>
       <td className="px-3 py-2.5 text-right text-muted-foreground">{formatDiscoveryAge(row.createdAt)}</td>
       <td className="px-3 py-2.5 text-right pr-4">
         <button

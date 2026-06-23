@@ -120,43 +120,83 @@ export type PriceChanges = {
   h24: number | null;
 };
 
+const EMPTY_CHANGES: PriceChanges = { m5: null, h1: null, h6: null, h12: null, h24: null };
+
+// Server-side cache so the Explore list (many tokens) doesn't re-fetch OHLCV
+// every poll and blow past the GeckoTerminal/Nad.fun rate limits.
+const _pcCache = new Map<string, { v: PriceChanges; at: number }>();
+const PC_TTL_MS = 60_000;
+
+async function computePriceChanges(token: string): Promise<PriceChanges> {
+  const key = token.toLowerCase();
+  if (!/^0x[a-f0-9]{40}$/.test(key)) return EMPTY_CHANGES;
+  const cached = _pcCache.get(key);
+  if (cached && Date.now() - cached.at < PC_TTL_MS) return cached.v;
+
+  const now = Math.floor(Date.now() / 1000);
+  const from = now - 25 * 3600; // a touch over 24h of headroom
+  // 5-min candles over ~25h ≈ 300 candles in ONE response — fine granularity.
+  const bars = await ohlcv(key, "5", from, now, 320).catch(() => null);
+  if (!bars || bars.s !== "ok" || bars.t.length === 0) {
+    _pcCache.set(key, { v: EMPTY_CHANGES, at: Date.now() });
+    return EMPTY_CHANGES;
+  }
+
+  const t = bars.t;
+  const c = bars.c.map((x) => Number(x));
+  const last = c[c.length - 1];
+  if (!(last > 0)) { _pcCache.set(key, { v: EMPTY_CHANGES, at: Date.now() }); return EMPTY_CHANGES; }
+  const nowTs = t[t.length - 1];
+
+  const changeFor = (windowSec: number): number | null => {
+    const target = nowTs - windowSec;
+    if (t[0] > target) return null; // not enough history for this window
+    let idx = 0;
+    for (let i = 0; i < t.length; i++) {
+      if (t[i] <= target) idx = i;
+      else break;
+    }
+    const past = c[idx];
+    if (!(past > 0)) return null;
+    return ((last - past) / past) * 100;
+  };
+
+  const v: PriceChanges = {
+    m5: changeFor(5 * 60),
+    h1: changeFor(60 * 60),
+    h6: changeFor(6 * 3600),
+    h12: changeFor(12 * 3600),
+    h24: changeFor(24 * 3600),
+  };
+  _pcCache.set(key, { v, at: Date.now() });
+  return v;
+}
+
 export const fetchPriceChanges = createServerFn({ method: "GET" })
   .inputValidator((d: { token: string }) => d)
-  .handler(async ({ data }): Promise<PriceChanges> => {
-    const now = Math.floor(Date.now() / 1000);
-    const from = now - 25 * 3600; // a touch over 24h of headroom
-    // 5-min candles over ~25h ≈ 300 candles — fine granularity for every window.
-    const bars = await ohlcv(data.token, "5", from, now, 320).catch(() => null);
-    const empty: PriceChanges = { m5: null, h1: null, h6: null, h12: null, h24: null };
-    if (!bars || bars.s !== "ok" || bars.t.length === 0) return empty;
+  .handler(async ({ data }): Promise<PriceChanges> => computePriceChanges(data.token));
 
-    const t = bars.t;
-    const c = bars.c.map((x) => Number(x));
-    const last = c[c.length - 1];
-    if (!(last > 0)) return empty;
-    const nowTs = t[t.length - 1];
+// Batched price changes for the Explore list. Caps the set, runs limited
+// concurrency, and leans on the per-token cache so repeat polls are cheap.
+export const fetchPriceChangesBatch = createServerFn({ method: "GET" })
+  .inputValidator((d: { tokens: string[] }) => d)
+  .handler(async ({ data }): Promise<Record<string, PriceChanges>> => {
+    const tokens = [...new Set((data.tokens ?? [])
+      .map((x) => String(x).toLowerCase())
+      .filter((x) => /^0x[a-f0-9]{40}$/.test(x)))].slice(0, 50);
 
-    // Closest close at-or-before (nowTs - windowSeconds).
-    const changeFor = (windowSec: number): number | null => {
-      const target = nowTs - windowSec;
-      if (t[0] > target) return null; // not enough history for this window
-      let idx = 0;
-      for (let i = 0; i < t.length; i++) {
-        if (t[i] <= target) idx = i;
-        else break;
+    const out: Record<string, PriceChanges> = {};
+    const CONCURRENCY = 5;
+    let cursor = 0;
+    async function worker() {
+      while (cursor < tokens.length) {
+        const tk = tokens[cursor++];
+        try { out[tk] = await computePriceChanges(tk); }
+        catch { out[tk] = EMPTY_CHANGES; }
       }
-      const past = c[idx];
-      if (!(past > 0)) return null;
-      return ((last - past) / past) * 100;
-    };
-
-    return {
-      m5: changeFor(5 * 60),
-      h1: changeFor(60 * 60),
-      h6: changeFor(6 * 3600),
-      h12: changeFor(12 * 3600),
-      h24: changeFor(24 * 3600),
-    };
+    }
+    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, tokens.length) }, worker));
+    return out;
   });
 
 // --- Multi-timeframe metrics --------------------------------------------
