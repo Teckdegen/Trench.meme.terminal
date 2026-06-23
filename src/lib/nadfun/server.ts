@@ -94,6 +94,71 @@ export const fetchChart = createServerFn({ method: "GET" })
     }
   });
 
+// --- Price change over arbitrary windows (from OHLCV) -------------------
+// Computes % price change for 5m / 1h / 6h / 12h / 24h straight from 5-minute
+// candles (Nad.fun first, GeckoTerminal fallback). Returns null per window
+// when the token is younger than that window.
+async function ohlcv(token: string, resolution: ChartResolution, from: number, to: number, countback: number): Promise<BarResponse> {
+  try {
+    const q = new URLSearchParams({
+      from: String(from), to: String(to), resolution,
+      countback: String(countback), chart_type: "price_usd",
+    });
+    const r = await nf<BarResponse>(`/trade/chart/${token}?${q}`);
+    if (r.s === "ok" && r.t.length > 0) return r;
+    throw new Error("no_data");
+  } catch {
+    return gtChart({ token, resolution, from, to, countback });
+  }
+}
+
+export type PriceChanges = {
+  m5: number | null;
+  h1: number | null;
+  h6: number | null;
+  h12: number | null;
+  h24: number | null;
+};
+
+export const fetchPriceChanges = createServerFn({ method: "GET" })
+  .inputValidator((d: { token: string }) => d)
+  .handler(async ({ data }): Promise<PriceChanges> => {
+    const now = Math.floor(Date.now() / 1000);
+    const from = now - 25 * 3600; // a touch over 24h of headroom
+    // 5-min candles over ~25h ≈ 300 candles — fine granularity for every window.
+    const bars = await ohlcv(data.token, "5", from, now, 320).catch(() => null);
+    const empty: PriceChanges = { m5: null, h1: null, h6: null, h12: null, h24: null };
+    if (!bars || bars.s !== "ok" || bars.t.length === 0) return empty;
+
+    const t = bars.t;
+    const c = bars.c.map((x) => Number(x));
+    const last = c[c.length - 1];
+    if (!(last > 0)) return empty;
+    const nowTs = t[t.length - 1];
+
+    // Closest close at-or-before (nowTs - windowSeconds).
+    const changeFor = (windowSec: number): number | null => {
+      const target = nowTs - windowSec;
+      if (t[0] > target) return null; // not enough history for this window
+      let idx = 0;
+      for (let i = 0; i < t.length; i++) {
+        if (t[i] <= target) idx = i;
+        else break;
+      }
+      const past = c[idx];
+      if (!(past > 0)) return null;
+      return ((last - past) / past) * 100;
+    };
+
+    return {
+      m5: changeFor(5 * 60),
+      h1: changeFor(60 * 60),
+      h6: changeFor(6 * 3600),
+      h12: changeFor(12 * 3600),
+      h24: changeFor(24 * 3600),
+    };
+  });
+
 // --- Multi-timeframe metrics --------------------------------------------
 export const fetchMetrics = createServerFn({ method: "GET" })
   .inputValidator((d: { token: string; timeframes?: MetricTimeframe[] }) => d)

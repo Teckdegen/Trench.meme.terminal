@@ -11,6 +11,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   fetchTokenSnapshot,
   useTokenSnapshot,
+  useTokenPriceChanges,
   useTokenTrades,
   useTokenHolders,
   useTokenChat,
@@ -169,6 +170,8 @@ function TokenPage() {
   const chartHeight = isMobile ? 300 : 480;
   // Graduated/bonded tokens have a real DEX pool → use the GeckoTerminal embed.
   const useGeckoChart = isContract(t.addr) && snapshot?.is_graduated === true;
+  // Multi-window price change (5m/1h/6h/12h/24h) from OHLCV.
+  const priceChanges = useTokenPriceChanges(isContract(t.addr) ? t.addr : undefined);
 
   return (
     <div className="space-y-3">
@@ -209,6 +212,29 @@ function TokenPage() {
             <TopStat label="Volume" mobileLabel="Vol" value={liveVol} sub="24h · USD" />
             <TopStat label="Market Cap" mobileLabel="MCap" value={liveMcap} />
             <TopStat label="24h" value={fmtPct(liveP24h)} positive={liveP24h >= 0} />
+          </div>
+
+          {/* Multi-window price change — 5m / 1h / 6h / 12h / 24h from OHLCV */}
+          <div className="mt-3 grid grid-cols-5 gap-1.5">
+            {([
+              ["5m", priceChanges?.m5],
+              ["1h", priceChanges?.h1],
+              ["6h", priceChanges?.h6],
+              ["12h", priceChanges?.h12],
+              ["24h", priceChanges?.h24],
+            ] as const).map(([label, val]) => {
+              const up = (val ?? 0) >= 0;
+              return (
+                <div key={label} className="rounded-lg bg-surface-2 px-1.5 py-1.5 text-center">
+                  <div className="text-[10px] uppercase text-muted-foreground">{label}</div>
+                  <div className={`text-xs font-bold tabular-nums mt-0.5 ${
+                    val == null ? "text-muted-foreground" : up ? "text-up" : "text-down"
+                  }`}>
+                    {val == null ? "—" : `${up ? "+" : ""}${val.toFixed(2)}%`}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
 
@@ -440,7 +466,7 @@ function TokenPage() {
           ) : activeTab === "Trades" && isContract(t.addr) ? (
             <TradesTab token={t.addr} enabled={activeTab === "Trades"} priceUsd={market?.price_usd ?? null} />
           ) : activeTab === "Holders" && isContract(t.addr) ? (
-            <HoldersTab token={t.addr} enabled={activeTab === "Holders"} priceUsd={market?.price_usd ?? null} />
+            <HoldersTab token={t.addr} enabled={activeTab === "Holders"} priceUsd={market?.price_usd ?? null} dev={creatorOnChain} />
           ) : (
             <div className="py-16 text-center text-sm text-muted-foreground">
               Select a tab above.
@@ -672,8 +698,22 @@ function TradesTab({ token, enabled, priceUsd: _priceUsd }: { token: string; ena
   );
 }
 
-function HoldersTab({ token, enabled, priceUsd }: { token: string; enabled: boolean; priceUsd: number | null }) {
+// Badge shown next to the token creator's wallet in the holders list.
+function DevTag() {
+  return (
+    <span
+      className="shrink-0 text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-primary/20 text-primary"
+      title="Token creator (dev) wallet"
+    >
+      Dev
+    </span>
+  );
+}
+
+function HoldersTab({ token, enabled, priceUsd, dev }: { token: string; enabled: boolean; priceUsd: number | null; dev?: string | null }) {
   const { holders, loading } = useTokenHolders(token, enabled);
+  const devAddr = dev?.toLowerCase() ?? null;
+  const isDev = (a: string) => !!devAddr && a.toLowerCase() === devAddr;
   if (!SUPABASE_ENABLED) {
     return <div className="py-12 text-center text-sm text-muted-foreground">Connect Supabase to load holders.</div>;
   }
@@ -692,7 +732,8 @@ function HoldersTab({ token, enabled, priceUsd }: { token: string; enabled: bool
             <li key={h.account_address} className="px-3 py-3 space-y-2">
               <div className="flex items-center gap-2 min-w-0">
                 <span className="text-[11px] text-muted-foreground w-5 shrink-0">{i + 1}</span>
-                <WalletLabel address={h.account_address} className="text-sm font-medium block truncate min-w-0 flex-1 hover:underline" />
+                <WalletLabel address={h.account_address} className="text-sm font-medium block truncate min-w-0 hover:underline" />
+                {isDev(h.account_address) && <DevTag />}
               </div>
               <div className="flex items-center justify-between gap-2 text-xs pl-7">
                 <span className="font-mono text-muted-foreground">{fmtAmount(h.balance)}</span>
@@ -726,7 +767,10 @@ function HoldersTab({ token, enabled, priceUsd }: { token: string; enabled: bool
                 <tr key={h.account_address} className="border-b border-border/50 row-hover">
                   <td className="px-3 py-2.5 text-muted-foreground">{i + 1}</td>
                   <td className="px-3 py-2.5 max-w-[220px]">
-                    <WalletLabel address={h.account_address} className="text-xs block truncate hover:underline" />
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <WalletLabel address={h.account_address} className="text-xs block truncate hover:underline" />
+                      {isDev(h.account_address) && <DevTag />}
+                    </div>
                   </td>
                   <td className="px-3 py-2.5 text-right font-mono text-xs">{fmtAmount(h.balance)}</td>
                   <td className="px-3 py-2.5 text-right">{fmtUsdShort(usd)}</td>

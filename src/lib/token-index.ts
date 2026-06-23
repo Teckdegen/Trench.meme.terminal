@@ -237,6 +237,40 @@ export function useTokenSnapshot(token: string | undefined, initial: TokenSnapsh
   return { snapshot, loading };
 }
 
+export type PriceChanges = {
+  m5: number | null;
+  h1: number | null;
+  h6: number | null;
+  h12: number | null;
+  h24: number | null;
+};
+
+/** Live price-change deltas over 5m / 1h / 6h / 12h / 24h, computed from OHLCV. */
+export function useTokenPriceChanges(token: string | undefined) {
+  const [changes, setChanges] = useState<PriceChanges | null>(null);
+
+  useEffect(() => {
+    if (!token) return;
+    const addr = token.toLowerCase();
+    if (!/^0x[a-f0-9]{40}$/.test(addr)) return;
+    let cancel = false;
+    const refresh = async () => {
+      try {
+        const { fetchPriceChanges } = await import("./nadfun/server");
+        const r = await fetchPriceChanges({ data: { token: addr } });
+        if (!cancel) setChanges(r);
+      } catch { /* keep last value */ }
+    };
+    refresh();
+    // Price changes move slower than the 5s tab refresh — 30s is plenty and
+    // keeps us well within GeckoTerminal's rate limit.
+    const poll = setInterval(refresh, 30_000);
+    return () => { cancel = true; clearInterval(poll); };
+  }, [token]);
+
+  return changes;
+}
+
 export function useTokenTrades(token: string | undefined, enabled: boolean, limit = 50) {
   const [trades, setTrades] = useState<IndexedTrade[]>([]);
   const [loading, setLoading] = useState(false);
