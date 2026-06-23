@@ -5,9 +5,9 @@ import { TradingViewAdvancedChart } from "@/components/TradingViewAdvancedChart"
 import { GeckoTerminalChart } from "@/components/GeckoTerminalChart";
 import { fmtPct } from "@/lib/fmt";
 import { WalletLabel, HandleLink, UserAvatar } from "@/components/Handle";
-import { Copy, Check, Settings, ChevronDown, Image as ImageIcon } from "lucide-react";
+import { Copy, Check, Settings, ChevronDown, Image as ImageIcon, Globe, Send } from "lucide-react";
 import { renderMentions } from "@/lib/renderMentions";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   fetchTokenSnapshot,
   useTokenSnapshot,
@@ -678,14 +678,15 @@ function TradesTab({ token, enabled, priceUsd: _priceUsd }: { token: string; ena
   );
 }
 
-// Compact token info that sits under the Buy/Sell panel — description,
-// socials, a couple of facts, and the contract. No total supply.
+// Rich token info card under the Buy/Sell panel — banner header (real banner
+// if the token has one, else its blurred logo), logo + name, description, and
+// real social icons. No total supply.
 function TokenInfo({ snapshot, address }: { snapshot: TokenSnapshot | null; address: string }) {
   const [copied, setCopied] = useState(false);
   if (!snapshot) return null;
 
   const hasDesc = !!snapshot.description?.trim();
-  const hasSocials = !!(snapshot.twitter || snapshot.telegram || snapshot.website);
+  const bannerSrc = snapshot.banner_uri || snapshot.image_uri || null;
   const launched = snapshot.created_at
     ? new Date(snapshot.created_at * 1000).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
     : null;
@@ -697,59 +698,105 @@ function TokenInfo({ snapshot, address }: { snapshot: TokenSnapshot | null; addr
   };
 
   return (
-    <div className="rounded-2xl bg-surface-2 p-3 space-y-3 mt-1">
-      <p className="text-[11px] uppercase tracking-wide text-muted-foreground font-semibold">About</p>
-
-      {hasDesc ? (
-        <p className="text-xs leading-relaxed text-foreground/90 whitespace-pre-wrap break-words">
-          {snapshot.description}
-        </p>
-      ) : (
-        <p className="text-xs text-muted-foreground italic">No description.</p>
-      )}
-
-      {hasSocials && (
-        <div className="flex flex-wrap gap-1.5">
-          {snapshot.twitter && <SocialPill label="X" href={snapshot.twitter} />}
-          {snapshot.telegram && <SocialPill label="Telegram" href={snapshot.telegram} />}
-          {snapshot.website && <SocialPill label="Website" href={snapshot.website} />}
+    <div className="rounded-2xl bg-surface-2 overflow-hidden mt-1 border border-white/5">
+      {/* Banner — real banner, or the logo blurred as a cover */}
+      <div className="relative h-20">
+        {bannerSrc ? (
+          <img
+            src={bannerSrc}
+            alt=""
+            className="absolute inset-0 w-full h-full object-cover"
+            style={snapshot.banner_uri ? undefined : { filter: "blur(14px)", transform: "scale(1.3)" }}
+          />
+        ) : (
+          <div className="absolute inset-0 bg-gradient-to-br from-primary/30 to-surface-2" />
+        )}
+        <div className="absolute inset-0 bg-gradient-to-t from-surface-2 via-surface-2/40 to-transparent" />
+        {/* Logo + name overlaid on the banner */}
+        <div className="absolute left-3 bottom-2.5 flex items-center gap-2">
+          {snapshot.image_uri && (
+            <img
+              src={snapshot.image_uri}
+              alt={snapshot.symbol}
+              className="size-10 rounded-full object-cover ring-2 ring-background shrink-0"
+            />
+          )}
+          <div className="min-w-0">
+            <p className="text-sm font-bold leading-tight truncate text-white drop-shadow">{snapshot.name}</p>
+            <p className="text-[11px] text-white/70 leading-tight">${snapshot.symbol}</p>
+          </div>
         </div>
-      )}
-
-      <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-        <span>{snapshot.is_graduated ? "Graduated · DEX" : "Bonding curve"}</span>
-        {launched && <span>Launched {launched}</span>}
       </div>
 
-      <button
-        onClick={copy}
-        title="Copy contract address"
-        className="w-full text-left text-[10px] font-mono text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 break-all"
-      >
-        {address}
-        {copied ? <Check className="size-3 shrink-0 text-up" /> : <Copy className="size-3 shrink-0" />}
-      </button>
+      <div className="p-3 space-y-3">
+        {/* Social icon buttons */}
+        {(snapshot.twitter || snapshot.telegram || snapshot.website) && (
+          <div className="flex items-center gap-1.5">
+            {snapshot.website && (
+              <SocialIcon href={snapshot.website} label="Website"><Globe className="size-4" /></SocialIcon>
+            )}
+            {snapshot.twitter && (
+              <SocialIcon href={snapshot.twitter} label="X"><XGlyph /></SocialIcon>
+            )}
+            {snapshot.telegram && (
+              <SocialIcon href={snapshot.telegram} label="Telegram"><Send className="size-4" /></SocialIcon>
+            )}
+          </div>
+        )}
+
+        {/* Description */}
+        {hasDesc ? (
+          <p className="text-xs leading-relaxed text-foreground/90 whitespace-pre-wrap break-words">
+            {snapshot.description}
+          </p>
+        ) : (
+          <p className="text-xs text-muted-foreground italic">No description.</p>
+        )}
+
+        {/* Status + launch */}
+        <div className="flex items-center justify-between text-[11px]">
+          <span className={`px-2 py-0.5 rounded-full font-semibold ${
+            snapshot.is_graduated ? "bg-up/15 text-up" : "bg-primary/15 text-primary"
+          }`}>
+            {snapshot.is_graduated ? "Graduated · DEX" : "Bonding curve"}
+          </span>
+          {launched && <span className="text-muted-foreground">Launched {launched}</span>}
+        </div>
+
+        {/* Contract */}
+        <button
+          onClick={copy}
+          title="Copy contract address"
+          className="w-full text-left text-[10px] font-mono text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 break-all"
+        >
+          {address}
+          {copied ? <Check className="size-3 shrink-0 text-up" /> : <Copy className="size-3 shrink-0" />}
+        </button>
+      </div>
     </div>
   );
 }
 
-function SocialPill({ label, href }: { label: string; href: string }) {
+function SocialIcon({ href, label, children }: { href: string; label: string; children: ReactNode }) {
   return (
     <a
       href={href}
       target="_blank"
       rel="noreferrer"
-      className="h-7 px-2.5 rounded-full bg-white/5 hover:bg-white/10 text-[11px] font-semibold inline-flex items-center gap-1"
+      aria-label={label}
+      title={label}
+      className="size-9 grid place-items-center rounded-xl bg-white/5 hover:bg-white/10 text-foreground/80 hover:text-foreground transition-colors"
     >
-      {label} <ExternalLinkIcon />
+      {children}
     </a>
   );
 }
 
-function ExternalLinkIcon() {
+// Real X (Twitter) logo.
+function XGlyph() {
   return (
-    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-      <path d="M7 17 17 7M9 7h8v8" strokeLinecap="round" strokeLinejoin="round" />
+    <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true">
+      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
     </svg>
   );
 }
