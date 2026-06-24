@@ -1,74 +1,56 @@
 // Embedded GeckoTerminal chart for graduated ("bonded") tokens — once a token
 // completes its bonding curve and lives on a real DEX pool, GeckoTerminal has
-// full TradingView-grade candles, so we embed their iframe instead of our own
-// lightweight-charts feed. Bonding-curve tokens (no DEX pool yet) keep the
-// native Nad.fun chart.
+// full TradingView-grade candles, so we embed their iframe. If GeckoTerminal
+// has no pool indexed for the token, callers fall back to our native
+// TradingView chart (see useGeckoPool's "nopool" state).
 
 import { useEffect, useState } from "react";
-import { Loader2 } from "lucide-react";
 import { fetchGeckoPool } from "@/lib/geckoterminal";
 
-export function GeckoTerminalChart({
-  token,
-  height = 480,
-}: {
-  token: string;
-  height?: number;
-}) {
-  const [pool, setPool] = useState<string | null>(null);
-  const [network, setNetwork] = useState("monad");
-  const [state, setState] = useState<"loading" | "ready" | "nopool">("loading");
+export type GeckoPoolState = {
+  state: "idle" | "loading" | "pool" | "nopool";
+  pool: string | null;
+  network: string;
+};
+
+/** Resolve a token's GeckoTerminal pool. `token` undefined = idle (no fetch). */
+export function useGeckoPool(token: string | undefined): GeckoPoolState {
+  const [s, setS] = useState<GeckoPoolState>({ state: "idle", pool: null, network: "monad" });
 
   useEffect(() => {
+    if (!token) { setS({ state: "idle", pool: null, network: "monad" }); return; }
     let cancel = false;
-    setState("loading");
+    setS((prev) => ({ ...prev, state: "loading" }));
     fetchGeckoPool({ data: { token } })
       .then((r) => {
         if (cancel) return;
-        setNetwork(r.network);
-        if (r.pool) {
-          setPool(r.pool);
-          setState("ready");
-        } else {
-          setState("nopool");
-        }
+        setS({ state: r.pool ? "pool" : "nopool", pool: r.pool, network: r.network });
       })
-      .catch(() => { if (!cancel) setState("nopool"); });
+      .catch(() => { if (!cancel) setS({ state: "nopool", pool: null, network: "monad" }); });
     return () => { cancel = true; };
   }, [token]);
 
-  if (state === "loading") {
-    return (
-      <div className="grid place-items-center text-muted-foreground" style={{ height }}>
-        <Loader2 className="size-5 animate-spin" />
-      </div>
-    );
-  }
+  return s;
+}
 
-  if (state === "nopool" || !pool) {
-    return (
-      <div className="grid place-items-center text-xs text-muted-foreground px-6 text-center" style={{ height }}>
-        Chart isn't available for this pool yet.
-      </div>
-    );
-  }
-
-  // Dark, chart-only embed (hide the info bar + swaps panel so it slots into
-  // our layout cleanly). theme=dark matches the app.
+/** The GeckoTerminal iframe for a resolved pool. Fills its parent's height so
+ *  the chart column can stretch to match the trade panel (no blank gap). */
+export function GeckoEmbed({
+  pool, network, minHeight = 480,
+}: { pool: string; network: string; minHeight?: number }) {
+  // Dark, chart-only embed (hide the info bar + swaps panel).
   const src =
     `https://www.geckoterminal.com/${network}/pools/${pool}` +
     `?embed=1&info=0&swaps=0&grayscale=0&light_chart=0&theme=dark`;
-
   return (
     <iframe
       title="GeckoTerminal chart"
       src={src}
-      height={height}
       width="100%"
       allow="clipboard-write"
       allowFullScreen
-      className="w-full rounded-xl border border-white/5"
-      style={{ height }}
+      className="w-full h-full flex-1 rounded-xl border border-white/5"
+      style={{ minHeight }}
     />
   );
 }

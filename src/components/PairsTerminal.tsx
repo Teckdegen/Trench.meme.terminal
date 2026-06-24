@@ -749,7 +749,7 @@ function ExploreView({
               <th className="text-right px-2 py-2 font-medium">1H</th>
               <th className="text-right px-2 py-2 font-medium">6H</th>
               <th className="text-right px-2 py-2 font-medium">12H</th>
-              <th className="text-right px-2 py-2 font-medium">24H</th>
+              <SortTh label="24H" k="change" sort={sort} onSort={toggleSort} />
               <SortTh label="Vol" k="vol" sort={sort} onSort={toggleSort} />
               <SortTh label="Liq" k="liq" sort={sort} onSort={toggleSort} />
               <SortTh label="Age" k="age" sort={sort} onSort={toggleSort} />

@@ -2,10 +2,10 @@ import { createFileRoute, notFound, Link } from "@tanstack/react-router";
 import { CandleChart } from "@/components/Charts";
 import { MonLogo } from "@/components/MonLogo";
 import { TradingViewAdvancedChart } from "@/components/TradingViewAdvancedChart";
-import { GeckoTerminalChart } from "@/components/GeckoTerminalChart";
+import { useGeckoPool, GeckoEmbed } from "@/components/GeckoTerminalChart";
 import { fmtPct } from "@/lib/fmt";
 import { WalletLabel, HandleLink, UserAvatar } from "@/components/Handle";
-import { Copy, Check, Settings, ChevronDown, Image as ImageIcon, Globe, Send } from "lucide-react";
+import { Copy, Check, Settings, ChevronDown, Image as ImageIcon, Globe, Send, Loader2 } from "lucide-react";
 import { renderMentions } from "@/lib/renderMentions";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
@@ -170,8 +170,14 @@ function TokenPage() {
   const blockCheck = blocklist.checkToken(t.addr, creatorOnChain);
   const isMobile = useIsMobile();
   const chartHeight = isMobile ? 300 : 480;
-  // Graduated/bonded tokens have a real DEX pool → use the GeckoTerminal embed.
-  const useGeckoChart = isContract(t.addr) && snapshot?.is_graduated === true;
+  // Graduated/bonded tokens usually have a real DEX pool → embed GeckoTerminal.
+  // But if GeckoTerminal has no pool indexed, fall back to our TradingView
+  // chart. Resolve the pool to decide (and to know whether to show our own
+  // timeframe buttons — the Gecko embed has its own toolbar).
+  const wantGecko = isContract(t.addr) && snapshot?.is_graduated === true;
+  const gecko = useGeckoPool(wantGecko ? t.addr : undefined);
+  const geckoEmbedActive = wantGecko && gecko.state === "pool" && !!gecko.pool;
+  const geckoResolving = wantGecko && gecko.state === "loading";
 
   return (
     <div className="space-y-3">
@@ -217,10 +223,10 @@ function TokenPage() {
 
         <div className="grid grid-cols-1 xl:grid-cols-[1fr_320px]">
           <div className="border-b xl:border-b-0 xl:border-r border-border flex flex-col">
-            {/* Graduated (bonded) tokens live on a real DEX pool → embed the
-                full GeckoTerminal chart (it has its own timeframe toolbar).
-                Bonding-curve tokens keep our native Nad.fun chart + timeframes. */}
-            {!useGeckoChart && (
+            {/* The GeckoTerminal embed has its own timeframe toolbar, so we
+                hide ours only while the embed is actually active. When Gecko
+                has no pool, we fall back to TradingView and keep our buttons. */}
+            {!geckoEmbedActive && (
               <div className="px-3 sm:px-4 py-2 border-b border-border flex items-center gap-2">
                 <div className="flex items-center gap-1.5 text-xs overflow-x-auto scrollbar-hide">
                   {(["3m", "5m", "15m", "1h", "4h", "1d"] as const).map((x) => (
@@ -235,9 +241,15 @@ function TokenPage() {
                 </div>
               </div>
             )}
-            <div className="px-1 sm:px-2 py-2">
-              {useGeckoChart ? (
-                <GeckoTerminalChart token={t.addr} height={chartHeight} />
+            {/* flex-1 so the chart fills the column and matches the trade
+                panel height — no blank gap before the bottom tabs. */}
+            <div className="px-1 sm:px-2 py-2 flex-1 flex flex-col min-h-0" style={{ minHeight: chartHeight }}>
+              {geckoResolving ? (
+                <div className="flex-1 grid place-items-center text-muted-foreground">
+                  <Loader2 className="size-5 animate-spin" />
+                </div>
+              ) : geckoEmbedActive ? (
+                <GeckoEmbed pool={gecko.pool!} network={gecko.network} minHeight={chartHeight} />
               ) : isContract(t.addr) ? (
                 <TradingViewAdvancedChart token={t.addr} symbol={liveSymbol} interval={timeframe} height={chartHeight} />
               ) : (
@@ -246,7 +258,7 @@ function TokenPage() {
             </div>
           </div>
 
-          <aside className="p-3 sm:p-4 space-y-3 bg-surface/40">
+          <aside className="p-3 sm:p-4 flex flex-col gap-3 bg-surface/40">
             {/* Buy / Sell pill */}
             <div className="grid grid-cols-2 gap-1 p-1 rounded-2xl bg-surface-2">
               <button
@@ -418,8 +430,8 @@ function TokenPage() {
               expiry={expiry}
             />
 
-            {/* Token info — sits under the trade panel */}
-            <TokenInfo snapshot={snapshot} address={t.addr} />
+            {/* Token info — fills the rest of the column so there's no blank */}
+            <TokenInfo snapshot={snapshot} address={t.addr} className="flex-1" />
           </aside>
         </div>
 
@@ -681,7 +693,7 @@ function TradesTab({ token, enabled, priceUsd: _priceUsd }: { token: string; ena
 // Rich token info card under the Buy/Sell panel — banner header (real banner
 // if the token has one, else its blurred logo), logo + name, description, and
 // real social icons. No total supply.
-function TokenInfo({ snapshot, address }: { snapshot: TokenSnapshot | null; address: string }) {
+function TokenInfo({ snapshot, address, className = "" }: { snapshot: TokenSnapshot | null; address: string; className?: string }) {
   const [copied, setCopied] = useState(false);
   if (!snapshot) return null;
 
@@ -698,7 +710,7 @@ function TokenInfo({ snapshot, address }: { snapshot: TokenSnapshot | null; addr
   };
 
   return (
-    <div className="rounded-2xl bg-surface-2 overflow-hidden mt-1 border border-white/5">
+    <div className={`rounded-2xl bg-surface-2 overflow-hidden border border-white/5 ${className}`}>
       {/* Banner — real banner, or the logo blurred as a cover */}
       <div className="relative h-20">
         {bannerSrc ? (
