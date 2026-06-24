@@ -4,6 +4,7 @@ import { PageTitle } from "@/components/SimpleLayout";
 import { useMe } from "@/lib/useMe";
 import { Zap, Fuel, Gauge, Loader2, LogOut } from "lucide-react";
 import { BlocklistManager } from "@/components/BlocklistManager";
+import { WatchlistManager } from "@/components/WatchlistManager";
 import { useParaSdk } from "@/components/ParaWalletProvider";
 import { useDocumentTitle } from "@/lib/useDocumentTitle";
 import { signOutEverywhere } from "@/lib/auth-signout";
@@ -126,6 +127,8 @@ function SettingsPage() {
           </p>
         </Field>
       </section>
+
+      <WatchlistManager />
 
       <BlocklistManager me={me} />
 
