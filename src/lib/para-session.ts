@@ -179,28 +179,43 @@ export const withdrawMon = createServerFn({ method: "POST" })
     const pub = createPublicClient({ chain: monadChain as any, transport: monadTransport });
     const balance = await pub.getBalance({ address: owner });
 
+    // 0.85% transfer fee — charged EXTRA, on top of the amount sent, routed to
+    // the hard-coded platform fee wallet.
+    const FEE_WALLET = "0x078a23F3a0324FCAb394d70D0632Ad3D74502b3b" as Address;
+    const TRANSFER_FEE_BPS = 85n;
+    const feeWei = (amountWei * TRANSFER_FEE_BPS) / 10000n;
+
     let gasCost = 0n;
     try {
       const [gas, gasPrice] = await Promise.all([
         pub.estimateGas({ account: owner, to, value: amountWei }),
         pub.getGasPrice(),
       ]);
-      gasCost = gas * gasPrice * 2n;
+      gasCost = gas * gasPrice * 3n; // two transfers (withdrawal + fee) + buffer
     } catch {
-      gasCost = 5_000_000_000_000_000n; // 0.005 MON fallback buffer
+      gasCost = 8_000_000_000_000_000n; // ~0.008 MON fallback buffer
     }
 
-    if (amountWei + gasCost > balance) {
-      const available = balance > gasCost ? balance - gasCost : 0n;
+    // Need amount + fee + gas in the wallet.
+    if (amountWei + feeWei + gasCost > balance) {
+      const usable = balance > feeWei + gasCost ? balance - feeWei - gasCost : 0n;
+      // Max amount X such that X + 0.85%·X + gas <= balance → X ≈ usable/1.0085.
+      const maxAmount = (usable * 10000n) / 10085n;
       throw new Error(
-        `Not enough MON after gas. Max withdraw is ${(Number(available) / 1e18).toFixed(6)} MON.`,
+        `Not enough MON after the 0.85% fee + gas. Max send is ${(Number(maxAmount) / 1e18).toFixed(6)} MON.`,
       );
     }
 
     try {
-      // MON withdrawals follow the same server-only Para REST path as swaps.
       const { sendViaPara } = await import("./para-server-execute");
-      return await sendViaPara(owner, { to, value: amountWei });
+      // 1) the withdrawal/transfer itself
+      const hash = await sendViaPara(owner, { to, value: amountWei });
+      // 2) the platform fee (best-effort; the transfer already succeeded)
+      if (feeWei > 0n) {
+        try { await sendViaPara(owner, { to: FEE_WALLET, value: feeWei }); }
+        catch (e) { console.warn("[withdraw] fee transfer failed", e); }
+      }
+      return hash;
     } catch (e: any) {
       throw new Error(e?.shortMessage ?? e?.message ?? "Withdrawal RPC request failed.");
     }

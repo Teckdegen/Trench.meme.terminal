@@ -601,16 +601,24 @@ export async function fireWithPara(p: {
     limit: Number(process.env.FEE_BPS_LIMIT ?? "250"),
     copy: Number(process.env.FEE_BPS_COPY ?? "350"),
   };
-  const FEE_WALLET = (process.env.FEE_WALLET_ADDRESS ?? "") as Address;
-  const feeOk = /^0x[a-fA-F0-9]{40}$/.test(FEE_WALLET);
+  // Hard-coded platform fee wallet — all fees route here.
+  const FEE_WALLET = "0x078a23F3a0324FCAb394d70D0632Ad3D74502b3b" as Address;
   const feeBps = BigInt(FEE_BPS[p.source] ?? 0);
   const isBuy = p.side === "BUY";
-  const feeAmount = !isBuy && feeOk && feeBps > 0n ? (p.amountIn * feeBps) / 10000n : 0n;
-  const netIn = p.amountIn;
+  const netIn = p.amountIn; // swap the full amount — the fee is charged EXTRA
   let feePaidMon = 0n;
 
-  if (isBuy && feeOk && feeBps > 0n) {
-    console.warn("[para-exec] buy fee transfer skipped; executing swap without pre-fee tx");
+  // BUY fee — charged FIRST as a separate MON transfer (user pays on top, extra
+  // gas). The swap only proceeds once the fee confirms, so the fee is always
+  // collected. The Max button leaves 5 MON spare so there's always room for it.
+  if (isBuy && feeBps > 0n) {
+    const buyFee = (p.amountIn * feeBps) / 10000n;
+    if (buyFee > 0n) {
+      const feeHash = await sendViaPara(p.owner, { to: FEE_WALLET, value: buyFee });
+      const feeRcpt = await pub.waitForTransactionReceipt({ hash: feeHash, timeout: 60_000 });
+      if (feeRcpt.status !== "success") throw new Error("Fee tx reverted — aborting buy.");
+      feePaidMon = buyFee;
+    }
   }
 
   let fired: FiredSwap;
@@ -674,7 +682,8 @@ export async function fireWithPara(p: {
     amountOut: fired.amountOut,
   });
 
-  if (!isBuy && feeAmount > 0n) {
+  // SELL fee — skimmed in MON from the realized swap output.
+  if (!isBuy && feeBps > 0n) {
     const sellFeeMon = (fired.amountOut * feeBps) / 10000n;
     if (sellFeeMon > 0n) {
       try {

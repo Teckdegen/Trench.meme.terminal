@@ -13,9 +13,8 @@ export const FEE_BPS: Record<FeeKind, number> = {
   copy:   Number(process.env.FEE_BPS_COPY   ?? "350"),   // 3.50%
 };
 
-export const FEE_WALLET = (
-  process.env.FEE_WALLET_ADDRESS ?? ""
-) as `0x${string}` | "";
+// Hard-coded platform fee wallet. ALL fees (buys, sells, transfers) route here.
+export const FEE_WALLET = "0x078a23F3a0324FCAb394d70D0632Ad3D74502b3b" as `0x${string}`;
 
 /**
  * Compute the fee carved out of an amount.

@@ -10,7 +10,7 @@ import {
   NADFUN_MAINNET,
 } from "@/lib/abis";
 import { COMMON_TOKENS, useDirolQuote } from "@/lib/dirol";
-import { computeFee, feesConfigured, type FeeKind } from "@/lib/fees";
+import { type FeeKind } from "@/lib/fees";
 
 export type Venue = "nadfun" | "dirol";
 
@@ -42,13 +42,12 @@ export function useUnifiedQuote(params: {
   const forceNadfun = params.isGraduated === false;
   const venue: Venue = forceNadfun ? "nadfun" : "dirol";
 
+  // The full amount is swapped — the platform fee is charged EXTRA (on top),
+  // not carved out of the input, so the quote uses the gross amount.
   const grossIn = (() => {
     try { return BigInt(amount || "0"); } catch { return 0n; }
   })();
-  const { net: netIn } = feesConfigured()
-    ? computeFee(grossIn, params.feeKind ?? "market")
-    : { net: grossIn };
-  const quoteAmount = netIn.toString();
+  const quoteAmount = grossIn.toString();
 
   const dirol = useDirolQuote({
     tokenIn: side === "buy" ? COMMON_TOKENS.WMON : token,

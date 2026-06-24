@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { fmtPct } from "@/lib/fmt";
 import {
   useDiscoveryFeed,
@@ -16,12 +16,74 @@ import {
   ArrowUp, ArrowDown, ArrowUpDown,
   SlidersHorizontal, X,
 } from "lucide-react";
+import { Star } from "lucide-react";
 import { useMe } from "@/lib/useMe";
-import { useExplorePriceChanges, type PriceChanges } from "@/lib/token-index";
+import { useExplorePriceChanges, fetchTokenSnapshot, type PriceChanges } from "@/lib/token-index";
+import { useWatchlist } from "@/lib/watchlist";
+import { WatchButton } from "@/components/WatchButton";
 import { useBlocklist } from "@/lib/blocklist";
 import { useSwapExecute } from "@/lib/swap-execute";
 import { MonLogo } from "@/components/MonLogo";
 import { toast } from "sonner";
+
+// Live rows for the user's watchlist — fetches each watched token's snapshot
+// (cached briefly) and maps it to the explore DiscoveryRow shape so it renders
+// in the same table/cards (and picks up the price-change columns).
+const watchedSnapCache = new Map<string, { row: DiscoveryRow; at: number }>();
+function snapToRow(snap: any): DiscoveryRow | null {
+  if (!snap?.address) return null;
+  const supply = snap.total_supply ? Number(snap.total_supply) / 1e18 : null;
+  const price = snap.market?.price_usd ?? null;
+  const mc = price != null && supply ? price * supply : null;
+  return {
+    address: snap.address,
+    symbol: snap.symbol ?? "—",
+    name: snap.name ?? "",
+    imageUri: snap.image_uri ?? null,
+    creatorAddress: snap.creator_address ?? null,
+    column: "migrated",
+    createdAt: snap.created_at ? new Date(snap.created_at * 1000).toISOString() : null,
+    progressBps: 0,
+    priceUsd: price,
+    volumeUsd: snap.market?.volume_usd ?? null,
+    holderCount: snap.holder_count ?? null,
+    liquidityUsd: snap.market?.liquidity_usd ?? null,
+    isGraduated: !!snap.is_graduated,
+    marketCapUsd: mc,
+    priceChange24h: snap.market?.pct_change_24h ?? null,
+    twitter: snap.twitter ?? null,
+    telegram: snap.telegram ?? null,
+    website: snap.website ?? null,
+  };
+}
+function useWatchedRows(addresses: string[]): DiscoveryRow[] {
+  const [rows, setRows] = useState<DiscoveryRow[]>([]);
+  const key = addresses.map((a) => a.toLowerCase()).join(",");
+
+  useEffect(() => {
+    if (!key) { setRows([]); return; }
+    let cancel = false;
+    const addrs = key.split(",");
+    const run = async () => {
+      const out: DiscoveryRow[] = [];
+      for (const a of addrs) {
+        const cached = watchedSnapCache.get(a);
+        if (cached && Date.now() - cached.at < 12_000) { out.push(cached.row); continue; }
+        try {
+          const snap = await fetchTokenSnapshot({ data: { token: a } });
+          const row = snapToRow(snap);
+          if (row) { watchedSnapCache.set(a, { row, at: Date.now() }); out.push(row); }
+        } catch { /* skip unresolvable tokens */ }
+      }
+      if (!cancel) setRows(out);
+    };
+    run();
+    const iv = setInterval(run, 15_000);
+    return () => { cancel = true; clearInterval(iv); };
+  }, [key]);
+
+  return rows;
+}
 
 // Quick-buy amount per column, persisted to localStorage. Default 500 MON.
 const QUICK_BUY_KEY = (col: string) => `trench.quickbuy.${col}`;
@@ -457,8 +519,9 @@ function PairCard({ row, mode, quickBuyMon }: { row: DiscoveryRow; mode: ColumnK
 // Axiom-style table with 3 sub-tabs: New, Top Gainers, Top by MC.
 // Shares the same useDiscoveryFeed data — no new fetches.
 
-type ExploreTab = "new" | "gainers" | "mcap";
+type ExploreTab = "new" | "gainers" | "mcap" | "watchlist";
 const exploreTabs: { key: ExploreTab; label: string; icon: any }[] = [
+  { key: "watchlist", label: "Watchlist",  icon: Star },
   { key: "new",     label: "New",          icon: Sprout },
   { key: "gainers", label: "Top Gainers",  icon: TrendingUp },
   { key: "mcap",    label: "Top by MC",    icon: Flame },
@@ -657,6 +720,8 @@ function ExploreView({
   const [quickBuy, setQuickBuy] = useQuickBuyAmount(`explore.${tab}`);
   const [sort, setSort] = useState<SortState>(null);
   const [filters, setFilters] = useState<RangeFilters>(EMPTY_FILTERS);
+  const watchlist = useWatchlist();
+  const watchedRows = useWatchedRows(tab === "watchlist" ? watchlist.list : []);
   const toggleSort = (key: SortKey) => {
     setSort((s) => s?.key !== key
       ? { key, dir: "desc" }
@@ -664,21 +729,25 @@ function ExploreView({
   };
 
   const sorted = useMemo(() => {
-    const pool = tab === "new"
-      ? [...lists.new]
-      : [...lists.migrated, ...lists.final];
-    // Tab default ordering
+    // Watchlist keeps its own (most-recent-first) order by default.
     let rows: DiscoveryRow[];
-    if (tab === "new") {
-      rows = pool.sort((a, b) => +new Date(b.createdAt ?? 0) - +new Date(a.createdAt ?? 0));
-    } else if (tab === "gainers") {
-      rows = pool
-        .filter((r) => r.priceChange24h != null)
-        .sort((a, b) => (b.priceChange24h ?? 0) - (a.priceChange24h ?? 0));
+    if (tab === "watchlist") {
+      rows = [...watchedRows];
     } else {
-      rows = pool
-        .filter((r) => (r.marketCapUsd ?? 0) > 0)
-        .sort((a, b) => (b.marketCapUsd ?? 0) - (a.marketCapUsd ?? 0));
+      const pool = tab === "new"
+        ? [...lists.new]
+        : [...lists.migrated, ...lists.final];
+      if (tab === "new") {
+        rows = pool.sort((a, b) => +new Date(b.createdAt ?? 0) - +new Date(a.createdAt ?? 0));
+      } else if (tab === "gainers") {
+        rows = pool
+          .filter((r) => r.priceChange24h != null)
+          .sort((a, b) => (b.priceChange24h ?? 0) - (a.priceChange24h ?? 0));
+      } else {
+        rows = pool
+          .filter((r) => (r.marketCapUsd ?? 0) > 0)
+          .sort((a, b) => (b.marketCapUsd ?? 0) - (a.marketCapUsd ?? 0));
+      }
     }
     // User-picked column sort overrides the tab default
     if (sort) {
@@ -686,7 +755,7 @@ function ExploreView({
       rows = [...rows].sort((a, b) => (sortValue(a, sort.key) - sortValue(b, sort.key)) * mul);
     }
     return rows;
-  }, [tab, lists, sort]);
+  }, [tab, lists, sort, watchedRows]);
 
   const filtered = useMemo(() => {
     const ranged = applyRangeFilters(sorted, filters);
@@ -701,6 +770,16 @@ function ExploreView({
   // cached server-side). Recomputed only when the visible set changes.
   const changeTokens = useMemo(() => filtered.slice(0, 50).map((r) => r.address), [filtered]);
   const changes = useExplorePriceChanges(changeTokens);
+
+  // Loading / empty states (the watchlist tab has its own).
+  const isWatchTab = tab === "watchlist";
+  const showLoading = filtered.length === 0 && (
+    isWatchTab ? watchlist.list.length > 0 : loading
+  );
+  const showEmpty = filtered.length === 0 && !showLoading;
+  const emptyMsg = isWatchTab
+    ? "Your watchlist is empty — tap the star on any token to add it."
+    : "No tokens match.";
 
   return (
     <div className="bg-background">
@@ -757,11 +836,11 @@ function ExploreView({
             </tr>
           </thead>
           <tbody>
-            {loading && filtered.length === 0 && (
+            {showLoading && (
               Array.from({ length: 8 }).map((_, i) => <ExploreRowSkeleton key={`skel-${i}`} />)
             )}
-            {!loading && filtered.length === 0 && (
-              <tr><td colSpan={11} className="px-3 py-12 text-center text-muted-foreground text-xs">No tokens match.</td></tr>
+            {showEmpty && (
+              <tr><td colSpan={11} className="px-3 py-12 text-center text-muted-foreground text-xs">{emptyMsg}</td></tr>
             )}
             {filtered.map((r) => (
               <ExploreRow key={r.address} row={r} quickBuyMon={quickBuy} changes={changes[r.address.toLowerCase()]} />
@@ -796,10 +875,10 @@ function ExploreView({
 
       {/* Mobile — stacked cards, denser, more data per row */}
       <ul className="md:hidden divide-y divide-white/5">
-        {loading && filtered.length === 0 &&
+        {showLoading &&
           Array.from({ length: 8 }).map((_, i) => <ExploreMobileCardSkeleton key={`m-skel-${i}`} />)}
-        {!loading && filtered.length === 0 && (
-          <li className="px-4 py-12 text-center text-xs text-muted-foreground">No tokens match.</li>
+        {showEmpty && (
+          <li className="px-4 py-12 text-center text-xs text-muted-foreground">{emptyMsg}</li>
         )}
         {filtered.map((r) => (
           <ExploreMobileCard key={`m-${r.address}`} row={r} quickBuyMon={quickBuy} changes={changes[r.address.toLowerCase()]} />
@@ -878,6 +957,7 @@ function ExploreMobileCard({ row, quickBuyMon, changes }: { row: DiscoveryRow; q
               <span><span className="text-muted-foreground">Liq </span><b>{fmtVol(row.liquidityUsd)}</b></span>
             </div>
           </div>
+          <WatchButton address={row.address} size={17} className="shrink-0 size-8" />
           <button
             onClick={buy}
             disabled={pending || !me}
@@ -978,27 +1058,30 @@ function ExploreRow({ row, quickBuyMon, changes }: { row: DiscoveryRow; quickBuy
   return (
     <tr className="border-b border-white/5 hover:bg-white/[0.03]">
       <td className="px-3 py-2.5">
-        <Link to="/token/$id" params={{ id: row.address }} className="flex items-center gap-2 min-w-0">
-          {row.imageUri ? (
-            <img src={row.imageUri} alt="" className="size-9 rounded-lg object-cover shrink-0" />
-          ) : (
-            <div
-              className="size-9 rounded-lg grid place-items-center text-[10px] font-bold text-background shrink-0"
-              style={{ background: `linear-gradient(135deg, ${color}, ${color}99)` }}
-            >
-              {row.symbol.slice(0, 2)}
+        <div className="flex items-center gap-2 min-w-0">
+          <WatchButton address={row.address} size={15} className="shrink-0" />
+          <Link to="/token/$id" params={{ id: row.address }} className="flex items-center gap-2 min-w-0">
+            {row.imageUri ? (
+              <img src={row.imageUri} alt="" className="size-9 rounded-lg object-cover shrink-0" />
+            ) : (
+              <div
+                className="size-9 rounded-lg grid place-items-center text-[10px] font-bold text-background shrink-0"
+                style={{ background: `linear-gradient(135deg, ${color}, ${color}99)` }}
+              >
+                {row.symbol.slice(0, 2)}
+              </div>
+            )}
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5">
+                <span className="font-bold text-sm truncate">{row.symbol}</span>
+                <span className="text-[11px] text-muted-foreground truncate">{row.name}</span>
+              </div>
+              <div className="flex items-center gap-1 mt-0.5">
+                <SocialIcons twitter={row.twitter} telegram={row.telegram} website={row.website} />
+              </div>
             </div>
-          )}
-          <div className="min-w-0">
-            <div className="flex items-center gap-1.5">
-              <span className="font-bold text-sm truncate">{row.symbol}</span>
-              <span className="text-[11px] text-muted-foreground truncate">{row.name}</span>
-            </div>
-            <div className="flex items-center gap-1 mt-0.5">
-              <SocialIcons twitter={row.twitter} telegram={row.telegram} website={row.website} />
-            </div>
-          </div>
-        </Link>
+          </Link>
+        </div>
       </td>
       <td className="px-3 py-2.5 text-right tabular-nums">{fmtMc(row)}</td>
       <DeltaCell v={changes?.m5} />

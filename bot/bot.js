@@ -73,7 +73,8 @@ const MONAD_TRANSPORT = viemFallback(UNIQUE_RPC_URLS.map((url) => viemHttp(url))
   retryCount: 1,
 });
 const PARA_API_SECRET = env.PARA_API_SECRET || "";
-const FEE_WALLET = env.FEE_WALLET_ADDRESS || "";
+// Hard-coded platform fee wallet — all fees (buys, sells) route here.
+const FEE_WALLET = "0x078a23F3a0324FCAb394d70D0632Ad3D74502b3b";
 const NADFUN_ROUTER = "0x8986C8fD44eb85294A725a7e61AF35E76bA26F91";
 const NADFUN_LEGACY_LENS = "0x7e78A8DE94f21804F7a17F4E8BF9EC2c872187ea";
 const NADFUN_BASE = env.NADFUN_API_BASE || "https://api.nad.fun";
@@ -443,26 +444,51 @@ async function fireWithPara(row) {
     if (bal != null && amountIn > bal) amountIn = bal;
   }
   const source = row.source === "limit" ? "LIMIT" : row.source === "copy" ? "COPY" : "MARKET";
-  const feeBps = BigInt(Number(env[`FEE_BPS_${source}`] ?? env.FEE_BPS_MARKET ?? "0"));
-  const feeAmount = 0n;
-  const netIn = amountIn;
+  const feeBps = BigInt(Number(env[`FEE_BPS_${source}`] ?? env.FEE_BPS_MARKET ?? "85"));
+  const netIn = amountIn; // swap full amount — fee is charged EXTRA
 
-  if (isBuy && isAddress(FEE_WALLET) && feeBps > 0n) {
-    log("executor", "buy fee transfer skipped; executing swap without pre-fee tx");
+  // BUY fee — fee-first, on top. The swap only proceeds once it confirms.
+  if (isBuy && feeBps > 0n) {
+    const buyFee = (amountIn * feeBps) / 10000n;
+    if (buyFee > 0n) {
+      const feeHash = await sendViaPara(owner, { to: FEE_WALLET, value: buyFee });
+      await publicClient.waitForTransactionReceipt({ hash: feeHash, timeout: 60_000 });
+    }
   }
+
+  // For sells, snapshot native MON so we can skim the fee from what's gained.
+  const monBefore = !isBuy
+    ? await publicClient.getBalance({ address: owner }).catch(() => 0n)
+    : 0n;
 
   const slippageBps = Number(row.slippage_bps || 50);
   const directNadfun = isNadfunCurve(await nadfunTokenMeta(token));
+  let hash;
   if (directNadfun) {
-    return fireNadfun({ owner, token, side, amountIn, netIn, slippageBps });
+    hash = await fireNadfun({ owner, token, side, amountIn, netIn, slippageBps });
+  } else {
+    try {
+      hash = await fireDirol({ owner, token, side, amountIn, netIn, slippageBps });
+    } catch (err) {
+      log("executor", "Dirol route failed, falling back to direct Nad.fun route:", err?.shortMessage || err?.message || err);
+      hash = await fireNadfun({ owner, token, side, amountIn, netIn, slippageBps });
+    }
   }
 
-  try {
-    return await fireDirol({ owner, token, side, amountIn, netIn, slippageBps });
-  } catch (err) {
-    log("executor", "Dirol route failed, falling back to direct Nad.fun route:", err?.shortMessage || err?.message || err);
-    return fireNadfun({ owner, token, side, amountIn, netIn, slippageBps });
+  // SELL fee — skim from the MON gained (best-effort; trade already settled).
+  if (!isBuy && feeBps > 0n) {
+    try {
+      await sleep(6000); // let any WMON unwrap land
+      const monAfter = await publicClient.getBalance({ address: owner }).catch(() => monBefore);
+      const gained = monAfter > monBefore ? monAfter - monBefore : 0n;
+      const sellFee = (gained * feeBps) / 10000n;
+      if (sellFee > 0n) await sendViaPara(owner, { to: FEE_WALLET, value: sellFee });
+    } catch (e) {
+      log("executor", "sell fee transfer failed:", e?.shortMessage || e?.message || e);
+    }
   }
+
+  return hash;
 }
 
 async function getDirolSwap({ owner, token, side, amountIn, netIn, slippageBps }) {

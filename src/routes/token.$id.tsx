@@ -3,6 +3,7 @@ import { CandleChart } from "@/components/Charts";
 import { MonLogo } from "@/components/MonLogo";
 import { TradingViewAdvancedChart } from "@/components/TradingViewAdvancedChart";
 import { useGeckoPool, GeckoEmbed } from "@/components/GeckoTerminalChart";
+import { WatchButton } from "@/components/WatchButton";
 import { fmtPct } from "@/lib/fmt";
 import { WalletLabel, HandleLink, UserAvatar } from "@/components/Handle";
 import { Copy, Check, Settings, ChevronDown, Image as ImageIcon, Globe, Send, Loader2 } from "lucide-react";
@@ -127,8 +128,10 @@ function TokenPage() {
   const fillMax = () => {
     if (!me) return;
     if (side === "buy") {
-      // Leave a tiny dust buffer for gas — ~0.005 MON
-      const v = Math.max(0, monBal.balance - 0.005);
+      // Leave 5 MON spare for gas AND reserve the 0.85% platform fee (charged
+      // on top), so a max buy never fails for lack of fee/gas. Solving
+      //   amount + 0.85%·amount + 5 = balance  →  amount = (balance − 5) / 1.0085
+      const v = Math.max(0, (monBal.balance - 5) / 1.0085);
       setAmount(v > 0 ? v.toFixed(6).replace(/\.?0+$/, "") : "0");
     } else {
       // Truncate, never round — toFixed rounds up, which can display (and
@@ -205,7 +208,10 @@ function TokenPage() {
               </span>
             )}
             <div className="min-w-0 flex-1">
-              <p className="font-semibold leading-none text-base sm:text-lg truncate">{liveName}</p>
+              <div className="flex items-center gap-1.5 min-w-0">
+                <p className="font-semibold leading-none text-base sm:text-lg truncate">{liveName}</p>
+                {isContract(t.addr) && <WatchButton address={t.addr} size={18} className="shrink-0" />}
+              </div>
               <p className="text-[11px] text-muted-foreground font-mono inline-flex items-center gap-1 mt-1 max-w-full">
                 <span className="truncate sm:hidden">{shortAddr(t.addr)}</span>
                 <span className="truncate hidden sm:inline">{t.addr}</span>
