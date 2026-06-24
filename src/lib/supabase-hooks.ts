@@ -2,7 +2,7 @@
 // All chat (cabals, DMs, token chat) lives on Gun.js — see src/lib/cabal.ts, gun-dms.ts.
 // subscriptions are scoped per-component so they're torn down on unmount.
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { createServerFn } from "@tanstack/react-start";
 import { supabase, supabaseAdmin } from "./supabase";
 import { fetchIdentities, getCachedIdentity, labelFor, profileSlug, patchIdentity, subscribeIdentityPatches } from "./identity";
@@ -607,6 +607,27 @@ export type NotificationRow = {
 export function useNotifications(me: string | undefined) {
   const [notifs, setNotifs] = useState<NotificationRow[] | null>(null);
 
+  // Optimistically flip read state locally so the badge clears instantly, then
+  // persist to the DB. Without the local update the unread count never changed
+  // until a remount — that's why the bell badge lingered after reading.
+  const markRead = useCallback(async (id: string) => {
+    if (!me) return;
+    setNotifs((s) => s ? s.map((n) => (n.id === id ? { ...n, read: true } : n)) : s);
+    try {
+      const { markNotifRead } = await import("@/lib/alerts-server");
+      await markNotifRead({ data: { me, id } });
+    } catch (e) { console.warn("[notifs] markRead failed", e); }
+  }, [me]);
+
+  const markAllRead = useCallback(async () => {
+    if (!me) return;
+    setNotifs((s) => s ? s.map((n) => (n.read ? n : { ...n, read: true })) : s);
+    try {
+      const { markAllNotifsRead } = await import("@/lib/alerts-server");
+      await markAllNotifsRead({ data: { me } });
+    } catch (e) { console.warn("[notifs] markAllRead failed", e); }
+  }, [me]);
+
   useEffect(() => {
     if (!enabled || !me) return;
     const sb = supabase();
@@ -641,7 +662,7 @@ export function useNotifications(me: string | undefined) {
     return () => { cancelled = true; sb.removeChannel(ch); };
   }, [me]);
 
-  return notifs;
+  return { notifs, markRead, markAllRead };
 }
 
 export async function markNotificationRead(id: string, me?: string) {

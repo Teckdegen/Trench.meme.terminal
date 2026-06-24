@@ -22,7 +22,7 @@ import {
 import {
   useMyCabals, useCabalChat, sendCabalChat, GUN_ENABLED as CABAL_GUN,
 } from "@/lib/cabal";
-import { useNotifications, markNotificationRead } from "@/lib/supabase-hooks";
+import { useNotifications } from "@/lib/supabase-hooks";
 import { HandleLink } from "@/components/Handle";
 
 type Pane = null | "dm" | "cabal" | "notif";
@@ -52,7 +52,7 @@ export function FloatingBubbles() {
   // Data sources (only run when signed in)
   const threads = useDMThreads(me);
   const cabals = useMyCabals(me);
-  const notifs = useNotifications(me);
+  const { notifs, markRead, markAllRead } = useNotifications(me);
 
   // Unread counts (very simple: rely on per-source unread fields)
   const dmUnread = useMemo(
@@ -118,7 +118,7 @@ export function FloatingBubbles() {
             )
           )}
           {pane === "notif" && (
-            <NotifPanel notifs={notifs ?? []} onClose={close} me={me} />
+            <NotifPanel notifs={notifs ?? []} onClose={close} onRead={markRead} />
           )}
         </div>
       )}
@@ -165,7 +165,12 @@ export function FloatingBubbles() {
           label="Notifications"
           active={pane === "notif"}
           badge={notifUnread > 0 ? notifUnread : null}
-          onClick={() => setPane(pane === "notif" ? null : "notif")}
+          onClick={() => {
+            const opening = pane !== "notif";
+            setPane(opening ? "notif" : null);
+            // Opening the bell = you've seen them → clear the badge.
+            if (opening && notifUnread > 0) void markAllRead();
+          }}
         />
       </div>
     </div>
@@ -425,8 +430,8 @@ function CabalThreadPanel({
 
 // ─────────────── Notifications ───────────────────────────────────────
 function NotifPanel({
-  notifs, onClose, me,
-}: { notifs: any[]; onClose: () => void; me?: string }) {
+  notifs, onClose, onRead,
+}: { notifs: any[]; onClose: () => void; onRead: (id: string) => void }) {
   return (
     <>
       <PanelHeader title="Notifications" onClose={onClose} link="/alerts" linkLabel="Open all" />
@@ -451,7 +456,7 @@ function NotifPanel({
                 </div>
               );
               return (
-                <li key={n.id} onClick={() => !n.read && markNotificationRead(n.id, me)}>
+                <li key={n.id} onClick={() => !n.read && onRead(n.id)}>
                   {n.link ? (
                     <Link to={n.link as any} className="block">{body}</Link>
                   ) : body}

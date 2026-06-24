@@ -116,6 +116,17 @@ export const markNotifRead = createServerFn({ method: "POST" })
       .eq("owner_address", data.me.toLowerCase());
   });
 
+export const markAllNotifsRead = createServerFn({ method: "POST" })
+  .inputValidator((d: { me: string }) => d)
+  .handler(async ({ data }) => {
+    const sb = supabaseAdmin();
+    await sb
+      .from("notifications")
+      .update({ read: true })
+      .eq("owner_address", data.me.toLowerCase())
+      .eq("read", false);
+  });
+
 export const deleteAlert = createServerFn({ method: "POST" })
   .inputValidator((d: { me: string; id: string }) => d)
   .handler(async ({ data }) => {

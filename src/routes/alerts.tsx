@@ -5,7 +5,7 @@ import {
   Plus, Bell, TrendingUp, Zap, ArrowUpRight, ArrowDownLeft, Wallet, Activity, Coins,
   Target, ChevronRight, X, Trash2, Pause, Play, Search, Smartphone, Check,
 } from "lucide-react";
-import { useNotifications, markNotificationRead, SUPABASE_ENABLED } from "@/lib/supabase-hooks";
+import { useNotifications, SUPABASE_ENABLED, type NotificationRow } from "@/lib/supabase-hooks";
 import { useIdentities, labelFor } from "@/lib/identity";
 import { useAnnouncements } from "@/lib/announcements";
 import { Megaphone } from "lucide-react";
@@ -63,7 +63,13 @@ function Alerts() {
   const [tab, setTab] = useState<Tab>("Inbox");
   const [creating, setCreating] = useState<AlertKind | null>(null);
   const [rules, setRules] = useState<AlertRow[]>([]);
-  const notifs = useNotifications(me);
+  const { notifs, markRead, markAllRead } = useNotifications(me);
+
+  // Visiting the inbox = you've seen them → clear unread so the bell badge
+  // doesn't linger after you leave the page.
+  useEffect(() => {
+    if (tab === "Inbox" && (notifs ?? []).some((n) => !n.read)) void markAllRead();
+  }, [tab, notifs, markAllRead]);
 
   // Pull alert rules via server fn (admin client bypasses RLS — anon
   // client couldn't read because we don't issue Supabase JWTs).
@@ -123,7 +129,7 @@ function Alerts() {
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_320px] gap-4">
         {/* Main column */}
         <div className="rounded-2xl bg-surface border border-white/5 overflow-hidden">
-          {tab === "Inbox" ? <InboxView notifs={notifs} /> : <RulesView rules={rules} onChange={refresh} />}
+          {tab === "Inbox" ? <InboxView notifs={notifs} onRead={markRead} /> : <RulesView rules={rules} onChange={refresh} />}
         </div>
 
         {/* Templates rail */}
@@ -170,7 +176,7 @@ function Alerts() {
 }
 
 // -------- inbox view -----------------------------------------------------
-function InboxView({ notifs }: { notifs: ReturnType<typeof useNotifications> }) {
+function InboxView({ notifs, onRead }: { notifs: NotificationRow[] | null; onRead: (id: string) => void }) {
   const me = useMe();
   // Announcements from @trenchmem appear in EVERY user's alerts inbox,
   // at the top, until newer alerts arrive.
@@ -235,7 +241,7 @@ function InboxView({ notifs }: { notifs: ReturnType<typeof useNotifications> }) 
           <li key={n.id}>
             <Link
               to={n.link as any ?? "/alerts"}
-              onClick={() => markNotificationRead(n.id, me)}
+              onClick={() => onRead(n.id)}
               className={`flex items-start gap-3 px-4 py-3 hover:bg-white/[0.03] border-b border-white/5 ${n.read ? "opacity-70" : ""}`}
             >
               {!n.read && <span className="mt-1.5 size-1.5 rounded-full bg-primary shrink-0" />}
