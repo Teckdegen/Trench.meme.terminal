@@ -14,6 +14,7 @@ import {
   Inbox as InboxIcon,
   Settings as Cog,
   Gift,
+  Dices,
 } from "lucide-react";
 import { useState } from "react";
 import { APP_NAME, APP_LOGO } from "@/lib/brand";
@@ -31,6 +32,7 @@ const nav: { to: any; params?: any; label: string; icon: any }[] = [
   { to: "/feed", label: "Feed", icon: MessageSquare },
   { to: "/inbox", label: "Inbox", icon: InboxIcon },
   { to: "/cabals", label: "Cabals", icon: Mic },
+  { to: "/casino", label: "Casino", icon: Dices },
   { to: "/leaderboards", label: "Leaderboards", icon: Trophy },
   { to: "/rewards", label: "Rewards", icon: Gift },
   { to: "/settings", label: "Settings", icon: Cog },
