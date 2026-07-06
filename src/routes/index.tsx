@@ -218,20 +218,19 @@ function Landing() {
                   </span>
                 </a>
 
-                <div
-                  className="rounded-2xl bg-white/5 border-[3px] border-white/25 px-5 py-4 opacity-80"
-                  style={{ boxShadow: "0 5px 0 rgba(255,255,255,0.08)" }}
+                <a
+                  href="/casino"
+                  className="block rounded-2xl bg-white/8 border-[3px] border-white/30 px-5 py-4 transition-all duration-150 hover:-rotate-1 hover:scale-[1.02] active:translate-y-1 active:rotate-0 active:scale-100"
+                  style={{ boxShadow: "0 5px 0 rgba(0,0,0,0.5)" }}
                 >
                   <span className="flex items-center justify-between">
                     <span>
-                      <span className="block text-white/80 font-black text-lg tracking-tight">Casino</span>
-                      <span className="block text-white/45 text-xs mt-0.5">Trench the odds</span>
+                      <span className="block text-white font-black text-lg tracking-tight">Casino</span>
+                      <span className="block text-white/60 text-xs mt-0.5">Trench the odds</span>
                     </span>
-                    <span className="text-[10px] font-black uppercase tracking-wide px-2.5 py-1 rounded-full bg-[#a855f7]/25 text-[#c084fc]">
-                      Coming soon
-                    </span>
+                    <ArrowUpRight className="size-6 text-white" strokeWidth={3} />
                   </span>
-                </div>
+                </a>
               </div>
             </div>
           </div>

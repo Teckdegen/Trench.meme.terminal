@@ -1,6 +1,7 @@
 import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
 import { useState, useEffect, type ReactNode } from "react";
+import { ArrowLeft, Dices } from "lucide-react";
 
 export function AppLayout({ children }: { children: ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -30,6 +31,13 @@ export function AppLayout({ children }: { children: ReactNode }) {
     return <>{children}</>;
   }
 
+  // Casino routes get their own full-screen layout — no sidebar, just a slim
+  // top bar with a back button and the casino nav.
+  const isCasino = pathname.startsWith("/casino");
+  if (isCasino) {
+    return <CasinoLayout>{children}</CasinoLayout>;
+  }
+
   return (
     <div className="flex h-screen w-full overflow-hidden">
       <Sidebar mobileOpen={mobileOpen} onCloseMobile={() => setMobileOpen(false)} />
@@ -37,6 +45,40 @@ export function AppLayout({ children }: { children: ReactNode }) {
         <Topbar onOpenMobile={() => setMobileOpen(true)} />
         <main className="flex-1 p-3 sm:p-4 md:p-6 pb-24 md:pb-6 overflow-y-auto">{children}</main>
       </div>
+    </div>
+  );
+}
+
+// ─── Casino layout — full screen, no sidebar, own topbar ─────────────────────
+function CasinoLayout({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex flex-col h-screen w-full overflow-hidden" style={{ background: "#000" }}>
+      {/* Casino topbar */}
+      <header className="shrink-0 h-13 flex items-center justify-between px-4 sm:px-6"
+        style={{ borderBottom: "1px solid rgba(255,255,255,0.06)", background: "#000" }}>
+        <div className="flex items-center gap-3">
+          <a href="/" className="flex items-center gap-1.5 text-sm font-semibold transition-colors hover:text-white"
+            style={{ color: "rgba(255,255,255,0.5)" }}>
+            <ArrowLeft className="size-4" /> Home
+          </a>
+          <span style={{ color: "rgba(255,255,255,0.15)" }}>·</span>
+          <a href="/casino" className="flex items-center gap-1.5 font-black text-white text-sm">
+            <Dices className="size-4" style={{ color: "#a855f7" }} />
+            Casino
+          </a>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="text-xs font-semibold px-3 py-1.5 rounded-lg"
+            style={{ background: "rgba(168,85,247,0.15)", color: "#a855f7", border: "1px solid rgba(168,85,247,0.25)" }}>
+            Balance: — MON
+          </div>
+        </div>
+      </header>
+
+      <main className="flex-1 overflow-y-auto px-3 sm:px-5 md:px-8 py-5 pb-24"
+        style={{ background: "#000" }}>
+        {children}
+      </main>
     </div>
   );
 }

@@ -1,262 +1,243 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ShieldCheck, Dices, TrendingUp, Users, Zap } from "lucide-react";
 import { CASINO_GAMES, type CasinoGame } from "@/lib/casino-games";
 import { GameArt } from "@/components/casino/GameArt";
 import { useDocumentTitle } from "@/lib/useDocumentTitle";
 
 export const Route = createFileRoute("/casino")({ component: CasinoLobby });
 
+// ─── Category definitions ─────────────────────────────────────────────────────
+const CATEGORIES = [
+  {
+    label: "Degen Games",
+    emoji: "🎲",
+    slugs: ["moondoom", "sendit", "degenwheel", "chamber", "knifecatcher"],
+  },
+  {
+    label: "Mind Games",
+    emoji: "🧠",
+    slugs: ["capper", "exitscam", "diamondhands", "gaswar"],
+  },
+  {
+    label: "Market Games",
+    emoji: "📈",
+    slugs: ["pumpdump", "rugrun", "whalethrone"],
+  },
+  {
+    label: "Table Games",
+    emoji: "🃏",
+    slugs: ["poker"],
+  },
+];
+
 function CasinoLobby() {
   useDocumentTitle("Casino · trench.meme");
 
   return (
-    <div className="relative space-y-6 pb-12 overflow-x-hidden">
-      {/* ─── Ambient background blobs ─── */}
-      <div className="pointer-events-none fixed inset-0 z-0">
-        <div style={{
-          position: "absolute", top: "-10%", left: "-5%",
-          width: 600, height: 600, borderRadius: "50%",
-          background: "radial-gradient(circle, rgba(168,85,247,0.13), transparent 70%)",
-          filter: "blur(40px)",
-        }} />
-        <div style={{
-          position: "absolute", top: "20%", right: "-8%",
-          width: 500, height: 500, borderRadius: "50%",
-          background: "radial-gradient(circle, rgba(217,70,239,0.08), transparent 70%)",
-          filter: "blur(40px)",
-        }} />
-        <div style={{
-          position: "absolute", bottom: "5%", left: "30%",
-          width: 400, height: 400, borderRadius: "50%",
-          background: "radial-gradient(circle, rgba(139,92,246,0.07), transparent 70%)",
-          filter: "blur(50px)",
-        }} />
-      </div>
+    <div className="space-y-8 pb-10" style={{ background: "#000", minHeight: "100%" }}>
 
-      {/* ─── Hero ─── */}
-      <div
-        className="relative overflow-hidden rounded-3xl p-6 sm:p-10 z-10"
-        style={{
-          background: "linear-gradient(135deg, #1a0b33 0%, #0d0620 40%, #200840 75%, #0a0612 100%)",
-          border: "1.5px solid rgba(168,85,247,0.25)",
-          boxShadow: "0 0 60px rgba(168,85,247,0.15), 0 20px 60px rgba(0,0,0,0.5)",
-        }}
-      >
-        {/* Hero glow balls */}
-        <div className="absolute -right-16 -top-20 pointer-events-none" style={{
-          width: 440, height: 440,
-          background: "radial-gradient(circle, rgba(168,85,247,0.4), transparent 60%)",
-          filter: "blur(30px)",
-        }} />
-        <div className="absolute left-1/2 bottom-0 pointer-events-none" style={{
-          width: 300, height: 200,
-          background: "radial-gradient(circle, rgba(217,70,239,0.15), transparent 70%)",
-          filter: "blur(30px)",
-        }} />
+      {/* ── Top tabs ── */}
+      <TopTabs />
 
-        {/* Cartoon chips decoration — absolute positioned art */}
-        <div className="absolute right-6 bottom-4 sm:right-10 sm:bottom-6 pointer-events-none opacity-60 hidden sm:flex gap-2">
-          <GameArt kind="coin" accent="#facc15" size={56} />
-          <GameArt kind="diamond" accent="#38bdf8" size={56} />
-          <GameArt kind="crown" accent="#f97316" size={56} />
-        </div>
+      {/* ── Category sections ── */}
+      {CATEGORIES.map((cat) => {
+        const games = cat.slugs
+          .map((s) => CASINO_GAMES.find((g) => g.slug === s))
+          .filter(Boolean) as CasinoGame[];
+        if (!games.length) return null;
+        return (
+          <section key={cat.label}>
+            <SectionHeader label={cat.label} emoji={cat.emoji} />
+            <ScrollRow games={games} />
+          </section>
+        );
+      })}
 
-        <div className="relative z-10">
-          <div className="inline-flex items-center gap-2 h-7 px-3.5 rounded-full text-[11px] font-black uppercase tracking-widest"
-            style={{ background: "rgba(168,85,247,0.2)", border: "1px solid rgba(168,85,247,0.4)", color: "#c084fc" }}>
-            <ShieldCheck className="size-3.5" style={{ color: "#22c55e" }} />
-            Provably fair · 100% Onchain · Monad
-          </div>
-
-          <h1
-            className="mt-4 font-black text-white leading-none"
-            style={{
-              fontSize: "clamp(36px, 6vw, 68px)",
-              letterSpacing: "-0.03em",
-              textShadow: "0 4px 0 rgba(0,0,0,0.4), 0 0 60px rgba(168,85,247,0.5)",
-            }}
-          >
-            Trench the Odds.
-          </h1>
-
-          <p className="mt-3 text-sm sm:text-base max-w-xl leading-relaxed" style={{ color: "rgba(245,243,255,0.7)" }}>
-            Every game is PvP — you win other degens' bags.
-            The house just runs the table and takes <span style={{ color: "#a855f7", fontWeight: 700 }}>6%</span>.
-            No edge. No spread. No rigged RNG.
-          </p>
-
-          {/* Stats row */}
-          <div className="mt-5 flex flex-wrap gap-4">
-            {[
-              { icon: <Dices className="size-4" />, label: "13 Games", sub: "PvP only" },
-              { icon: <Zap className="size-4" />, label: "400ms Blocks", sub: "Instant settle" },
-              { icon: <Users className="size-4" />, label: "0 House Edge", sub: "Pure PvP" },
-              { icon: <TrendingUp className="size-4" />, label: "6% Rake", sub: "Only house cut" },
-            ].map((s) => (
-              <div key={s.label} className="flex items-center gap-2 px-3 py-2 rounded-xl"
-                style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)" }}>
-                <span style={{ color: "#a855f7" }}>{s.icon}</span>
-                <div>
-                  <div className="text-xs font-bold text-white">{s.label}</div>
-                  <div className="text-[10px]" style={{ color: "rgba(245,243,255,0.5)" }}>{s.sub}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* ─── Live wins ticker ─── */}
-      <WinsTicker />
-
-      {/* ─── Section heading ─── */}
-      <div className="relative z-10 flex items-center justify-between">
-        <h2 className="font-black text-white tracking-tight" style={{ fontSize: "clamp(18px, 2.5vw, 26px)", textShadow: "0 2px 0 rgba(0,0,0,0.3)" }}>
-          Choose Your Game
-        </h2>
-        <span className="text-xs font-semibold px-2.5 py-1 rounded-full"
-          style={{ background: "rgba(168,85,247,0.15)", color: "#c084fc", border: "1px solid rgba(168,85,247,0.3)" }}>
-          {CASINO_GAMES.length} games
-        </span>
-      </div>
-
-      {/* ─── Game grid ─── */}
-      <div className="relative z-10 grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-5">
-        {CASINO_GAMES.map((g) => (
-          <GameCard key={g.slug} game={g} />
-        ))}
-      </div>
-
-      {/* ─── Bottom CTA ─── */}
-      <div className="relative z-10 mt-4 rounded-2xl p-5 text-center"
-        style={{
-          background: "linear-gradient(135deg, #120a22, #1a0b33)",
-          border: "1px solid rgba(168,85,247,0.2)",
-        }}>
-        <p className="text-sm font-semibold" style={{ color: "rgba(245,243,255,0.6)" }}>
-          More games dropping every week. All onchain, all PvP.
-        </p>
-        <p className="text-[11px] mt-1" style={{ color: "rgba(245,243,255,0.35)" }}>
-          Bet tickets are ERC-721 NFTs — transferable, tradeable, verifiable.
-        </p>
-      </div>
+      {/* ── Recent bets feed ── */}
+      <RecentBets />
     </div>
   );
 }
 
+// ─── Top filter tabs ──────────────────────────────────────────────────────────
+const TABS = ["Lobby", "Degen Games", "Mind Games", "Market Games", "New Releases"];
+
+function TopTabs() {
+  return (
+    <div className="flex items-center gap-1 overflow-x-auto scrollbar-hide pb-1 pt-1">
+      {TABS.map((t, i) => (
+        <button
+          key={t}
+          className="shrink-0 px-4 py-2 rounded-lg text-sm font-bold whitespace-nowrap transition-colors"
+          style={i === 0
+            ? { background: "#a855f7", color: "#fff" }
+            : { background: "rgba(255,255,255,0.07)", color: "rgba(255,255,255,0.55)" }
+          }
+        >
+          {t}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ─── Section header ───────────────────────────────────────────────────────────
+function SectionHeader({ label, emoji }: { label: string; emoji: string }) {
+  return (
+    <div className="flex items-center justify-between mb-4 px-0.5">
+      <h2 className="font-black text-white flex items-center gap-2" style={{ fontSize: 18 }}>
+        {emoji} {label}
+      </h2>
+      <button className="text-xs font-semibold" style={{ color: "#a855f7" }}>
+        See all →
+      </button>
+    </div>
+  );
+}
+
+// ─── Horizontal scroll row of game cards ─────────────────────────────────────
+function ScrollRow({ games }: { games: CasinoGame[] }) {
+  return (
+    <div className="flex gap-3 overflow-x-auto scrollbar-hide pb-2 -mx-1 px-1">
+      {games.map((g) => (
+        <GameCard key={g.slug} game={g} />
+      ))}
+    </div>
+  );
+}
+
+// ─── Game card — reference style: art fills the card, name at bottom ─────────
 function GameCard({ game }: { game: CasinoGame }) {
   return (
     <Link
       to="/casino/$game"
       params={{ game: game.slug }}
-      className="group relative block overflow-hidden transition-all duration-200 hover:-translate-y-2 active:translate-y-0 active:scale-[0.98]"
+      className="group relative shrink-0 overflow-hidden transition-all duration-150 hover:scale-[1.04] active:scale-[0.97]"
       style={{
-        borderRadius: 20,
-        background: `linear-gradient(150deg, ${game.from} 0%, ${game.to} 100%)`,
-        border: "2px solid rgba(255,255,255,0.12)",
-        boxShadow: `0 8px 0 rgba(0,0,0,0.45), 0 20px 40px rgba(0,0,0,0.5), 0 0 30px ${game.glow}22`,
+        width: 150,
+        height: 200,
+        borderRadius: 16,
+        background: `linear-gradient(160deg, ${game.from} 0%, ${game.to} 100%)`,
+        boxShadow: `0 6px 0 rgba(0,0,0,0.6), 0 0 20px ${game.glow}22`,
       }}
     >
       {/* Glow blob */}
-      <div
-        className="absolute -right-8 -top-10 pointer-events-none opacity-60 group-hover:opacity-90 transition-opacity duration-300"
+      <div className="absolute -top-6 -right-6 pointer-events-none opacity-70 group-hover:opacity-100 transition-opacity"
         style={{
-          width: 160, height: 160,
-          background: `radial-gradient(circle, ${game.glow}88, transparent 65%)`,
-          filter: "blur(14px)",
+          width: 110, height: 110,
+          background: `radial-gradient(circle, ${game.glow}99, transparent 65%)`,
+          filter: "blur(10px)",
         }}
       />
 
-      {/* Shimmer overlay on hover */}
-      <div className="absolute inset-0 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-300"
-        style={{
-          background: "linear-gradient(135deg, rgba(255,255,255,0.07) 0%, transparent 60%)",
-        }}
-      />
-
-      <div className="relative p-3.5 sm:p-5 flex flex-col items-center text-center"
-        style={{ minHeight: 210 }}>
-
-        {/* Status chip */}
-        <span
-          className="absolute left-3 top-3 text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-full"
-          style={game.status === "live"
-            ? { background: "#22c55e", color: "#0a0612", boxShadow: "0 0 10px rgba(34,197,94,0.5)" }
-            : { background: "rgba(0,0,0,0.45)", color: "rgba(255,255,255,0.7)", border: "1px solid rgba(255,255,255,0.15)" }
-          }
-        >
-          {game.status === "live" ? "● Live" : "Soon"}
-        </span>
-
-        {/* Art — bounces on hover */}
-        <div className="mt-5 mb-2 transition-all duration-300 group-hover:scale-[1.15] group-hover:-rotate-[4deg] group-hover:drop-shadow-[0_8px_16px_rgba(0,0,0,0.5)]">
-          <GameArt kind={game.art} accent={game.glow} size={88} />
+      {/* Status chip */}
+      {game.status === "live" && (
+        <div className="absolute top-2 left-2 flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wide"
+          style={{ background: "#22c55e", color: "#000" }}>
+          <span className="size-1.5 rounded-full bg-black animate-pulse inline-block" />
+          Live
         </div>
+      )}
 
-        <h3
-          className="font-black text-white leading-tight tracking-tight"
-          style={{ fontSize: "clamp(14px, 2.2vw, 19px)", textShadow: "0 2px 0 rgba(0,0,0,0.4)" }}
-        >
-          {game.name}
-        </h3>
-        <p className="mt-1.5 text-[11px] leading-snug" style={{ color: "rgba(255,255,255,0.65)" }}>
-          {game.tagline}
-        </p>
-
-        <div className="mt-auto pt-3 inline-flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wider"
-          style={{ color: "rgba(255,255,255,0.85)" }}>
-          Play
-          <span className="inline-block transition-transform duration-200 group-hover:translate-x-1">→</span>
+      {/* Cartoon art — centered, big */}
+      <div className="absolute inset-0 flex items-center justify-center"
+        style={{ paddingBottom: 36 }}>
+        <div className="transition-transform duration-200 group-hover:scale-[1.12] group-hover:-rotate-3"
+          style={{ filter: `drop-shadow(0 8px 16px rgba(0,0,0,0.6)) drop-shadow(0 0 12px ${game.glow}66)` }}>
+          <GameArt kind={game.art} accent={game.glow} size={90} />
         </div>
       </div>
 
-      {/* Bottom glow bar */}
-      <div className="absolute bottom-0 left-0 right-0 h-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+      {/* Name bar at bottom */}
+      <div className="absolute bottom-0 left-0 right-0 px-3 py-2.5"
+        style={{ background: "linear-gradient(to top, rgba(0,0,0,0.85) 0%, transparent 100%)" }}>
+        <div className="font-black text-white leading-tight" style={{ fontSize: 13, textShadow: "0 1px 0 rgba(0,0,0,0.5)" }}>
+          {game.name}
+        </div>
+        <div className="text-[10px] mt-0.5" style={{ color: "rgba(255,255,255,0.55)" }}>
+          {game.status === "live" ? "PvP · 6% rake" : "Coming soon"}
+        </div>
+      </div>
+
+      {/* Bottom hover glow bar */}
+      <div className="absolute bottom-0 left-0 right-0 h-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200"
         style={{ background: `linear-gradient(90deg, transparent, ${game.glow}, transparent)` }}
       />
     </Link>
   );
 }
 
-function WinsTicker() {
-  const wins = [
-    { who: "@kojo", game: "Moon or Doom", amt: "+120 MON", color: "#22c55e" },
-    { who: "@degen42", game: "Rug Run", amt: "+1,103 MON", color: "#22c55e" },
-    { who: "@mona", game: "Send It", amt: "+340 MON", color: "#22c55e" },
-    { who: "@rex", game: "Chamber", amt: "+88 MON", color: "#22c55e" },
-    { who: "@trench001", game: "Degen Wheel", amt: "+512 MON", color: "#22c55e" },
-    { who: "@paperhand", game: "Diamond Hands", amt: "-50 MON", color: "#ef4444" },
-    { who: "@gasmaxxer", game: "Gas War", amt: "+770 MON", color: "#22c55e" },
-    { who: "@exitking", game: "Exit Scam", amt: "+230 MON", color: "#22c55e" },
-  ];
+// ─── Recent bets feed ─────────────────────────────────────────────────────────
+const FEED_TABS = ["All Bets", "Lucky Wins", "Degens", "Races"];
+
+const BETS = [
+  { game: "🎲 Dice", user: "@kojo",      time: "10:01 AM", bet: "0.00050 MON", mult: "1.02×", payout: "0.00051 MON", win: true },
+  { game: "🪅 Plinko", user: "@swanzzz",  time: "10:01 AM", bet: "0.00020 MON", mult: "0.80×", payout: "0.00016 MON", win: false },
+  { game: "🎲 Dice", user: "@kojo",      time: "10:01 AM", bet: "0.00050 MON", mult: "1.10×", payout: "0.00055 MON", win: true },
+  { game: "🪅 Plinko", user: "@swanzzz",  time: "10:01 AM", bet: "0.00020 MON", mult: "0.80×", payout: "0.00016 MON", win: false },
+  { game: "💀 Chamber", user: "@degen42", time: "10:02 AM", bet: "10 MON",      mult: "4.70×", payout: "47 MON",      win: true },
+  { game: "🚀 Send It", user: "@mona",    time: "10:02 AM", bet: "25 MON",      mult: "1.88×", payout: "47 MON",      win: true },
+  { game: "📈 P/D",   user: "@trench001", time: "10:03 AM", bet: "50 MON",      mult: "0×",    payout: "0 MON",       win: false },
+];
+
+function RecentBets() {
   return (
-    <div className="relative overflow-hidden rounded-xl flex items-center"
-      style={{
-        height: 40,
-        background: "rgba(168,85,247,0.06)",
-        border: "1px solid rgba(168,85,247,0.15)",
-      }}>
-      <span className="shrink-0 h-full px-3 grid place-items-center text-[10px] font-black uppercase tracking-widest"
-        style={{ background: "rgba(168,85,247,0.2)", color: "#c084fc", borderRight: "1px solid rgba(168,85,247,0.2)" }}>
-        <span className="flex items-center gap-1.5">
-          <span className="size-1.5 rounded-full bg-green-400 animate-pulse inline-block" />
-          Live
-        </span>
-      </span>
-      <div className="flex-1 overflow-hidden">
-        <div className="flex items-center gap-8 whitespace-nowrap animate-[ticker_28s_linear_infinite] px-5">
-          {[...wins, ...wins].map((w, i) => (
-            <span key={i} className="text-[11px] flex items-center gap-2">
-              <span style={{ color: "#a855f7", fontWeight: 700 }}>{w.who}</span>
-              <span style={{ color: "rgba(245,243,255,0.45)" }}>·</span>
-              <span style={{ color: "rgba(245,243,255,0.7)" }}>{w.game}</span>
-              <span style={{ color: "rgba(245,243,255,0.45)" }}>·</span>
-              <span style={{ color: w.color, fontWeight: 700 }}>{w.amt}</span>
-            </span>
-          ))}
-        </div>
+    <div className="rounded-2xl overflow-hidden" style={{
+      background: "#0a0612",
+      border: "1px solid rgba(255,255,255,0.07)",
+    }}>
+      {/* Feed tabs */}
+      <div className="flex items-center gap-0 border-b" style={{ borderColor: "rgba(255,255,255,0.07)" }}>
+        {FEED_TABS.map((t, i) => (
+          <button
+            key={t}
+            className="px-4 py-3 text-xs font-bold whitespace-nowrap transition-colors"
+            style={i === 0
+              ? { color: "#a855f7", borderBottom: "2px solid #a855f7" }
+              : { color: "rgba(255,255,255,0.45)" }
+            }
+          >
+            {t}
+          </button>
+        ))}
       </div>
-      <style>{`@keyframes ticker { from { transform: translateX(0) } to { transform: translateX(-50%) } }`}</style>
+
+      {/* Table header */}
+      <div className="grid px-4 py-2.5 text-[10px] font-bold uppercase tracking-wide"
+        style={{
+          gridTemplateColumns: "1.4fr 1.2fr 0.9fr 1.1fr 0.7fr 1.1fr",
+          color: "rgba(255,255,255,0.35)",
+          borderBottom: "1px solid rgba(255,255,255,0.05)",
+        }}>
+        <span>Game</span>
+        <span>User</span>
+        <span>Time</span>
+        <span>Bet</span>
+        <span>Multiplier</span>
+        <span>Payout</span>
+      </div>
+
+      {/* Rows */}
+      {BETS.map((b, i) => (
+        <div key={i}
+          className="grid px-4 py-2.5 items-center hover:bg-white/[0.02] transition-colors"
+          style={{
+            gridTemplateColumns: "1.4fr 1.2fr 0.9fr 1.1fr 0.7fr 1.1fr",
+            borderBottom: "1px solid rgba(255,255,255,0.04)",
+          }}>
+          <span className="text-xs font-semibold text-white">{b.game}</span>
+          <span className="flex items-center gap-1.5">
+            <span className="size-5 rounded-full flex items-center justify-center text-[10px]"
+              style={{ background: "rgba(168,85,247,0.2)" }}>
+              {b.user[1].toUpperCase()}
+            </span>
+            <span className="text-xs font-semibold" style={{ color: "#a855f7" }}>{b.user}</span>
+          </span>
+          <span className="text-xs tabular-nums" style={{ color: "rgba(255,255,255,0.45)" }}>{b.time}</span>
+          <span className="text-xs font-mono tabular-nums" style={{ color: "rgba(255,255,255,0.7)" }}>{b.bet}</span>
+          <span className="text-xs font-bold tabular-nums" style={{ color: b.win ? "#22c55e" : "#ef4444" }}>{b.mult}</span>
+          <span className="text-xs font-bold tabular-nums" style={{ color: b.win ? "#22c55e" : "#ef4444" }}>{b.payout}</span>
+        </div>
+      ))}
     </div>
   );
 }
