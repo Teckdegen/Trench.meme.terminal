@@ -2,7 +2,6 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import {
   LayoutDashboard,
   Brain,
-  Copy,
   Bell,
   MessageSquare,
   Trophy,
@@ -26,7 +25,6 @@ const nav: { to: any; params?: any; label: string; icon: any }[] = [
   { to: "/meme", label: "Dashboard", icon: LayoutDashboard },
   { to: "/wallet", label: "Wallet", icon: User },
   { to: "/smart-money", label: "Smart Money", icon: Brain },
-  { to: "/copy-trading", label: "Copy Trading", icon: Copy },
   { to: "/alerts", label: "Alerts", icon: Bell },
   { to: "/feed", label: "Feed", icon: MessageSquare },
   { to: "/inbox", label: "Inbox", icon: InboxIcon },
