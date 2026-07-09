@@ -7,10 +7,6 @@ import { MonLogo } from "@/components/MonLogo";
 import {
   useWalletPnl,
   useMyTrades,
-  useMyPosts,
-  createPost,
-  useAccountProfile,
-  SUPABASE_ENABLED,
 } from "@/lib/supabase-hooks";
 import { fmtUsd } from "@/lib/fmt";
 import { useIdentity, labelFor } from "@/lib/identity";
@@ -32,7 +28,6 @@ function PortfolioPage() {
   const [mTab, setMTab] = useState<"portfolio" | "transactions">("portfolio");
   const { snap, loading: pnlLoading } = useWalletPnl(me, "ALL");
   const { trades, loading: tradesLoading } = useMyTrades(me, 40);
-  const { profile } = useAccountProfile(me);
   const [walletTxs, setWalletTxs] = useState<ZerionTransaction[]>([]);
   const [walletTxLoading, setWalletTxLoading] = useState(false);
   const livePnl = useMemo(() => {
@@ -79,7 +74,6 @@ function PortfolioPage() {
   return (
     <div className="space-y-4 sectioned">
       <WalletHeader />
-      <Holdings />
       <WmonUnwrapPrompt />
 
       <MobileTabs
@@ -90,6 +84,35 @@ function PortfolioPage() {
           { key: "transactions", label: "Transactions" },
         ]}
       />
+
+      {/* Portfolio value — real chart at the top (Zerion-style) */}
+      <div className={`rounded-3xl ios-glass-card p-4 ${mTab === "portfolio" ? "" : "hidden"} md:block`}>
+        <div className="flex items-start justify-between">
+          <div>
+            <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Portfolio value</p>
+            {equityCurve.length > 0 ? (
+              <p className={`text-2xl font-bold tabular-nums mt-0.5 ${
+                equityCurve[equityCurve.length - 1].value >= 0 ? "text-up" : "text-down"
+              }`}>
+                {fmtUsd(equityCurve[equityCurve.length - 1].value)}
+              </p>
+            ) : (
+              <p className="text-2xl font-bold tabular-nums mt-0.5">$0.00</p>
+            )}
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {trades.length === 0
+                ? "No indexed trades yet — fire a swap to see your curve."
+                : `Net flow across ${trades.length} trades`}
+            </p>
+          </div>
+        </div>
+        <PerformanceChart points={equityCurve} />
+      </div>
+
+      {/* Portfolio Allocation — donut, same purple palette */}
+      <div className={mTab === "portfolio" ? "" : "hidden md:block"}>
+        <PortfolioAllocation />
+      </div>
 
       <div className={`grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 ${mTab === "portfolio" ? "" : "hidden"} md:grid`}>
         <StatTile
@@ -127,40 +150,11 @@ function PortfolioPage() {
         />
       </div>
 
-      {/* Performance — full-width equity curve */}
-      <div className={`rounded-3xl ios-glass-card p-4 ${mTab === "portfolio" ? "" : "hidden"} md:block`}>
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-sm font-semibold">Performance</h3>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              {trades.length === 0
-                ? "No indexed trades yet — fire a swap to see your curve."
-                : `Net flow across ${trades.length} trades`}
-            </p>
-          </div>
-          <div className="text-right">
-            <span className="text-xs text-muted-foreground">All time</span>
-            {equityCurve.length > 0 && (
-              <p className={`text-lg font-bold tabular-nums ${
-                equityCurve[equityCurve.length - 1].value >= 0 ? "text-up" : "text-down"
-              }`}>
-                {fmtUsd(equityCurve[equityCurve.length - 1].value)}
-              </p>
-            )}
-          </div>
-        </div>
-        <PerformanceChart points={equityCurve} />
-      </div>
+      <WalletHistoryTab transactions={walletTxs} loading={walletTxLoading || tradesLoading} hidden={mTab !== "transactions"} />
 
-      <div className="space-y-4">
-        <WalletPostsTab
-          me={me}
-          posts={[]}
-          loading={false}
-          profile={profile}
-          hidden
-        />
-        <WalletHistoryTab transactions={walletTxs} loading={walletTxLoading || tradesLoading} hidden={mTab !== "transactions"} />
+      {/* Tokens holding — the final thing on the page */}
+      <div className={mTab === "portfolio" ? "" : "hidden md:block"}>
+        <Holdings />
       </div>
     </div>
   );
@@ -308,90 +302,87 @@ function WmonUnwrapPrompt() {
   );
 }
 
-function WalletPostsTab({
-  me, posts, loading, profile, hidden,
-}: {
-  me: string | undefined;
-  posts: ReturnType<typeof useMyPosts>["posts"];
-  loading: boolean;
-  profile: ReturnType<typeof useAccountProfile>["profile"];
-  hidden: boolean;
-}) {
-  const [draft, setDraft] = useState("");
-  const [posting, setPosting] = useState(false);
+// Portfolio Allocation — donut of token holdings by USD value, same purple
+// palette. Center shows total value; legend lists each token's share.
+const ALLOC_COLORS = [
+  "#a855f7", "#8b5cf6", "#c084fc", "#7c3aed", "#d946ef",
+  "#6366f1", "#e879f9", "#a78bfa", "#9333ea", "#7e22ce",
+];
 
-  const submit = async () => {
-    if (!me || !draft.trim() || !SUPABASE_ENABLED) return;
-    setPosting(true);
-    try {
-      await createPost({ data: { author_address: me, body: draft.trim() } });
-      setDraft("");
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setPosting(false);
-    }
-  };
+function PortfolioAllocation() {
+  const me = useMe();
+  const { holdings, loading } = useTokenHoldings(me);
+  if (!me) return null;
 
-  const myIdentity = useIdentity(me);
-  const display = profile?.display_name ?? (labelFor(myIdentity, { at: false }) || "You");
+  const valued = holdings
+    .filter((h) => (h.valueUsd ?? 0) > 0)
+    .sort((a, b) => (b.valueUsd ?? 0) - (a.valueUsd ?? 0));
+  const total = valued.reduce((a, h) => a + (h.valueUsd ?? 0), 0);
+
+  // Build donut slices. Group anything past the top 8 into "Other".
+  const top = valued.slice(0, 8);
+  const otherVal = valued.slice(8).reduce((a, h) => a + (h.valueUsd ?? 0), 0);
+  const slices = [
+    ...top.map((h, i) => ({ label: h.symbol, value: h.valueUsd ?? 0, color: ALLOC_COLORS[i % ALLOC_COLORS.length] })),
+    ...(otherVal > 0 ? [{ label: "Other", value: otherVal, color: "#4b5563" }] : []),
+  ];
+
+  const R = 46, SW = 16, C = 2 * Math.PI * R;
+  let acc = 0;
 
   return (
-    <div className={hidden ? "hidden" : ""}>
-      <div className="rounded-3xl ios-glass-card p-4 mb-4">
-        <div className="flex gap-3">
-          <div
-            className="size-10 rounded-full grid place-items-center text-sm font-bold shrink-0 overflow-hidden"
-            style={{ background: "linear-gradient(135deg, #a855f7, #ec4899)" }}
-          >
-            {profile?.image_uri ? (
-              <img src={profile.image_uri} alt="" className="size-full object-cover" />
-            ) : (
-              display[0]?.toUpperCase()
-            )}
-          </div>
-          <div className="flex-1">
-            <textarea
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              placeholder="Share an update with your followers"
-              rows={2}
-              disabled={!me}
-              className="w-full bg-transparent text-base placeholder:text-muted-foreground/70 focus:outline-none resize-none disabled:opacity-50"
-            />
-            <div className="flex justify-end mt-2">
-              <button
-                onClick={() => void submit()}
-                disabled={!draft.trim() || !me || posting}
-                className="h-8 px-4 rounded-full lit-purple text-sm font-semibold disabled:opacity-40"
-              >
-                {posting ? "Posting..." : "Post"}
-              </button>
-            </div>
-          </div>
-        </div>
+    <section className="rounded-2xl bg-surface border border-white/5 overflow-hidden">
+      <div className="px-4 py-3 border-b border-white/5">
+        <h3 className="font-semibold text-sm">Portfolio Allocation</h3>
       </div>
-
-      <div className="rounded-3xl ios-glass-card overflow-hidden">
-        {loading && <p className="p-8 text-center text-sm text-muted-foreground">Loading posts...</p>}
-        {!loading && posts.length === 0 && (
-          <p className="p-8 text-center text-sm text-muted-foreground">No posts yet.</p>
-        )}
-        {posts.map((p, i) => (
-          <article key={p.id} className={`flex gap-3 p-4 ${i ? "border-t border-white/5" : ""}`}>
-            <div className="flex-1 min-w-0">
-              <div className="text-sm">
-                <span className="font-semibold">{display}</span>{" "}
-                <span className="text-muted-foreground">
-                  - {new Date(p.created_at).toLocaleString()}
-                </span>
+      {loading && valued.length === 0 ? (
+        <p className="p-8 text-center text-sm text-muted-foreground">Loading…</p>
+      ) : total <= 0 ? (
+        <p className="p-8 text-center text-sm text-muted-foreground">No valued holdings yet.</p>
+      ) : (
+        <div className="p-4 flex flex-col sm:flex-row items-center gap-5">
+          {/* Donut */}
+          <div className="relative shrink-0" style={{ width: 150, height: 150 }}>
+            <svg viewBox="0 0 120 120" width={150} height={150}>
+              <circle cx="60" cy="60" r={R} fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth={SW} />
+              {slices.map((s, i) => {
+                const frac = s.value / total;
+                const dash = frac * C;
+                const el = (
+                  <circle key={i} cx="60" cy="60" r={R} fill="none"
+                    stroke={s.color} strokeWidth={SW}
+                    strokeDasharray={`${dash} ${C - dash}`}
+                    strokeDashoffset={-acc * C}
+                    transform="rotate(-90 60 60)" strokeLinecap="butt" />
+                );
+                acc += frac;
+                return el;
+              })}
+            </svg>
+            <div className="absolute inset-0 grid place-items-center text-center">
+              <div>
+                <p className="text-[10px] text-muted-foreground leading-none">Total</p>
+                <p className="text-base font-bold tabular-nums leading-tight mt-0.5">{fmtUsd(total)}</p>
               </div>
-              <p className="text-[15px] mt-0.5 whitespace-pre-wrap">{p.body}</p>
             </div>
-          </article>
-        ))}
-      </div>
-    </div>
+          </div>
+          {/* Legend */}
+          <ul className="flex-1 w-full space-y-1.5 min-w-0">
+            {slices.map((s, i) => {
+              const pct = (s.value / total) * 100;
+              return (
+                <li key={i} className="flex items-center gap-2 text-sm">
+                  <span className="size-2.5 rounded-sm shrink-0" style={{ background: s.color }} />
+                  <span className="font-medium truncate">{s.label}</span>
+                  <span className="ml-auto text-muted-foreground tabular-nums shrink-0">{pct.toFixed(1)}%</span>
+                  <span className="w-16 text-right font-semibold tabular-nums shrink-0">{fmtUsd(s.value)}</span>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+    </section>
   );
 }
 
