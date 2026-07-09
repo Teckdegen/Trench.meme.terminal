@@ -65,9 +65,15 @@ export function DexScreenerEmbed({
   pair: string;
   className?: string;
 }) {
-  // DexScreener official embed URL — uses the same domain as the main site
-  // with ?embed=1 which switches to iframe-friendly mode (no nav, dark theme).
-  const src = `https://dexscreener.com/monad/${pair}?embed=1&theme=dark&info=0&trades=0`;
+  // DexScreener official embed URL + full param string exactly as their embed
+  // builder emits. Importantly there is NO `sandbox` attribute — DexScreener's
+  // embed page refuses to render inside a sandboxed frame ("This content is
+  // blocked"), so we must let it load like their own <iframe> snippet does.
+  const src =
+    `https://dexscreener.com/monad/${pair}` +
+    `?embed=1&loadChartSettings=0&trades=0&tabs=0&info=0` +
+    `&chartLeftToolbar=0&chartDefaultOnMobile=1&chartTheme=dark&theme=dark` +
+    `&chartStyle=0&chartType=usd&interval=15`;
 
   return (
     <iframe
@@ -76,7 +82,6 @@ export function DexScreenerEmbed({
       className={`w-full h-full border-0 ${className}`}
       allow="clipboard-write"
       allowFullScreen
-      sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
     />
   );
 }
