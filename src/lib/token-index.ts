@@ -162,6 +162,63 @@ export const fetchTokenSnapshot = createServerFn({ method: "GET" })
     }
   });
 
+// ─────────────── Activity (price change + volume by timeframe) ─────────────
+// Powers the token-page stats block: per-timeframe price change, plus buy/sell
+// volume (USD) so we can show 24h / buy / sell / net volume.
+export type ActivityBucket = {
+  timeframe: "5" | "60" | "240" | "1D";
+  percent: number;
+  buyVolUsd: number;
+  sellVolUsd: number;
+};
+
+const ACTIVITY_TFS: ActivityBucket["timeframe"][] = ["5", "60", "240", "1D"];
+
+export const fetchTokenActivity = createServerFn({ method: "GET" })
+  .inputValidator((d: { token: string }) => d)
+  .handler(async ({ data }): Promise<ActivityBucket[]> => {
+    try {
+      const token = data.token.toLowerCase();
+      const [{ usd: monUsd }, meta, m] = await Promise.all([
+        getMonUsdPrice(),
+        fetchTokenMetadata({ data: { token } }),
+        fetchMetrics({ data: { token, timeframes: ACTIVITY_TFS } }),
+      ]);
+      const mi = meta.market_info;
+      return ACTIVITY_TFS.map((tf) => {
+        const x = m.metrics?.find((y) => y.timeframe === tf);
+        return {
+          timeframe: tf,
+          percent: x?.percent ?? 0,
+          buyVolUsd: volumeToUsd(x?.volume?.buy, mi, monUsd) ?? 0,
+          sellVolUsd: volumeToUsd(x?.volume?.sell, mi, monUsd) ?? 0,
+        };
+      });
+    } catch {
+      return [];
+    }
+  });
+
+export function useTokenActivity(token: string | undefined, enabled = true) {
+  const [buckets, setBuckets] = useState<ActivityBucket[]>([]);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    if (!enabled || !token || !/^0x[a-f0-9]{40}$/i.test(token)) {
+      setBuckets([]); setLoading(false); return;
+    }
+    const addr = token.toLowerCase();
+    let cancel = false;
+    const run = () =>
+      fetchTokenActivity({ data: { token: addr } })
+        .then((b) => { if (!cancel) { setBuckets(b); setLoading(false); } })
+        .catch(() => { if (!cancel) setLoading(false); });
+    run();
+    const id = setInterval(run, TOKEN_TAB_REFRESH_MS);
+    return () => { cancel = true; clearInterval(id); };
+  }, [token, enabled]);
+  return { buckets, loading };
+}
+
 /** Tell the bot this token is being viewed — prioritised in the 5s sync queue. */
 export const touchTokenPagePin = createServerFn({ method: "POST" })
   .inputValidator((d: { token: string }) => d)

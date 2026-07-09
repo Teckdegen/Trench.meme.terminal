@@ -16,9 +16,11 @@ import {
   useTokenTrades,
   useTokenHolders,
   useTokenChat,
+  useTokenActivity,
   sendTokenChatMessage,
   liquidityUsd,
   type TokenSnapshot,
+  type ActivityBucket,
 } from "@/lib/token-index";
 import { useUnifiedQuote } from "@/lib/swap-router";
 import { useSwapExecute, createLimitOrder } from "@/lib/swap-execute";
@@ -85,6 +87,7 @@ function TokenPage() {
   })();
   const liveVol  = market?.volume_usd != null ? fmtUsdShort(market.volume_usd) : snapLoading ? "…" : "—";
   const onchainSupply = useOnchainSupply(isContract(t.addr) ? t.addr : undefined);
+  const activity = useTokenActivity(isContract(t.addr) ? t.addr : undefined);
   const liveMcap = (() => {
     const price = market?.price_usd;
     const tokens = onchainSupply.value != null
@@ -237,9 +240,13 @@ function TokenPage() {
 
           {/* Trade panel — right sidebar, desktop only. Same height as chart via flex row. */}
           {!isMobile && (
-            <aside className="shrink-0 w-[280px] lg:w-[300px] xl:w-[320px] flex flex-col overflow-y-auto"
+            <aside className="shrink-0 w-[280px] lg:w-[300px] xl:w-[320px] flex flex-col overflow-y-auto scrollbar-hide"
               style={{ borderLeft: "1px solid rgba(255,255,255,0.06)" }}>
-              <div className="p-3 flex flex-col gap-3">{tradePanel}</div>
+              <TokenBanner snapshot={snapshot} />
+              <div className="p-3 flex flex-col gap-3">
+                <TokenStats buckets={activity.buckets} />
+                {tradePanel}
+              </div>
             </aside>
           )}
         </div>
@@ -302,6 +309,7 @@ function TokenPage() {
               <div className="w-10 h-1 rounded-full" style={{ background: "rgba(255,255,255,0.2)" }} />
             </div>
             <div className="flex-1 overflow-y-auto px-4 pb-6">
+              <div className="mb-3"><TokenStats buckets={activity.buckets} /></div>
               <TradePanelContent
                 side={side} setSide={(s: "buy" | "sell") => setSide(s)}
                 orderType={orderType} setOrderType={setOrderType}
@@ -401,6 +409,69 @@ function InlineStat({ label, value, color }: { label: string; value: string; col
     <div className="text-right">
       <div className="text-[10px] leading-none mb-0.5" style={{ color: "rgba(245,243,255,0.45)" }}>{label}</div>
       <div className="text-xs font-bold tabular-nums leading-none" style={{ color: color ?? "var(--color-foreground)" }}>{value}</div>
+    </div>
+  );
+}
+
+// Banner strip above the trade panel — real banner, or the token logo blurred.
+function TokenBanner({ snapshot }: { snapshot: TokenSnapshot | null }) {
+  const src = snapshot?.banner_uri || snapshot?.image_uri;
+  if (!src) return null;
+  return (
+    <div className="shrink-0 relative h-20 overflow-hidden">
+      <img src={src} alt="" className="w-full h-full object-cover"
+        style={snapshot?.banner_uri ? undefined : { filter: "blur(16px)", transform: "scale(1.4)" }} />
+      <div className="absolute inset-0"
+        style={{ background: "linear-gradient(to bottom, rgba(10,6,18,0.1), rgba(10,6,18,0.75))" }} />
+    </div>
+  );
+}
+
+// Stats block: price change per timeframe + 24h volume breakdown (buy/sell/net).
+const TF_LABEL: Record<ActivityBucket["timeframe"], string> = {
+  "5": "5M", "60": "1H", "240": "4H", "1D": "24H",
+};
+function TokenStats({ buckets }: { buckets: ActivityBucket[] }) {
+  const day = buckets.find((b) => b.timeframe === "1D");
+  const buy = day?.buyVolUsd ?? 0;
+  const sell = day?.sellVolUsd ?? 0;
+  const total = buy + sell;
+  const net = buy - sell;
+  const order: ActivityBucket["timeframe"][] = ["5", "60", "240", "1D"];
+  const border = "1px solid rgba(255,255,255,0.06)";
+  return (
+    <div className="rounded-xl overflow-hidden" style={{ border }}>
+      {/* Price change per timeframe */}
+      <div className="grid grid-cols-4">
+        {order.map((tf, i) => {
+          const p = buckets.find((x) => x.timeframe === tf)?.percent ?? 0;
+          return (
+            <div key={tf} className="flex flex-col items-center gap-0.5 py-2"
+              style={i > 0 ? { borderLeft: border } : undefined}>
+              <span className="text-[10px] text-muted-foreground leading-none">{TF_LABEL[tf]}</span>
+              <span className={`text-xs font-bold tabular-nums leading-none ${p >= 0 ? "text-up" : "text-down"}`}>
+                {p >= 0 ? "+" : ""}{p.toFixed(2)}%
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      {/* Volume breakdown */}
+      <div className="grid grid-cols-4" style={{ borderTop: border }}>
+        <VolCell i={0} label="24h Vol" value={fmtUsdShort(total)} />
+        <VolCell i={1} label="Buy Vol" value={fmtUsdShort(buy)} color="text-up" />
+        <VolCell i={2} label="Sell Vol" value={fmtUsdShort(sell)} color="text-down" />
+        <VolCell i={3} label="Net Vol" value={fmtUsdShort(Math.abs(net))} color={net >= 0 ? "text-up" : "text-down"} />
+      </div>
+    </div>
+  );
+}
+function VolCell({ i, label, value, color }: { i: number; label: string; value: string; color?: string }) {
+  return (
+    <div className="flex flex-col items-center gap-0.5 py-2"
+      style={i > 0 ? { borderLeft: "1px solid rgba(255,255,255,0.06)" } : undefined}>
+      <span className="text-[10px] text-muted-foreground leading-none">{label}</span>
+      <span className={`text-[11px] font-bold tabular-nums leading-none ${color ?? ""}`}>{value}</span>
     </div>
   );
 }
