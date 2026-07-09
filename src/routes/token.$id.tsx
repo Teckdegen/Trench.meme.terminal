@@ -251,22 +251,11 @@ function TokenPage() {
           )}
         </div>
 
-        {/* Mobile: single Trade button pinned at the bottom of the above-fold */}
-        {isMobile && (
-          <div className="shrink-0 px-3 py-2.5"
-            style={{ borderTop: "1px solid rgba(255,255,255,0.08)", background: "#0a0612" }}>
-            <button
-              onClick={() => setMobilePanel(true)}
-              className="w-full h-12 rounded-2xl font-black text-sm flex items-center justify-center gap-2 text-white transition-all active:scale-[0.98]"
-              style={{ background: "linear-gradient(135deg, #8b5cf6, #6d28d9)", boxShadow: "0 4px 0 rgba(0,0,0,0.4), 0 0 20px rgba(139,92,246,0.3)" }}>
-              <TrendingUp className="size-4" strokeWidth={2.5} /> Trade
-            </button>
-          </div>
-        )}
       </div>
 
       {/* ── Below-fold: tabs + data (scroll to reach) ── */}
-      <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+      <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}
+        className={isMobile ? "pb-20" : undefined}>
         <div className="px-2 py-1.5 flex items-center gap-1 overflow-x-auto scrollbar-hide">
           {bottomTabs.map((tab) => (
             <button key={tab} onClick={() => setActiveTab(tab)}
@@ -290,6 +279,19 @@ function TokenPage() {
           <div className="py-8 text-center text-sm text-muted-foreground">Select a tab above.</div>
         )}
       </div>
+
+      {/* ── Mobile: fixed Trade bar — always visible, even scrolled to Holders ── */}
+      {isMobile && !mobilePanel && (
+        <div className="fixed bottom-0 left-0 right-0 z-30 px-3 py-2.5"
+          style={{ borderTop: "1px solid rgba(255,255,255,0.08)", background: "#0a0612", paddingBottom: "calc(0.625rem + env(safe-area-inset-bottom))" }}>
+          <button
+            onClick={() => setMobilePanel(true)}
+            className="w-full h-12 rounded-2xl font-black text-sm flex items-center justify-center gap-2 text-white transition-all active:scale-[0.98]"
+            style={{ background: "linear-gradient(135deg, #8b5cf6, #6d28d9)", boxShadow: "0 4px 0 rgba(0,0,0,0.4), 0 0 20px rgba(139,92,246,0.3)" }}>
+            <TrendingUp className="size-4" strokeWidth={2.5} /> Trade
+          </button>
+        </div>
+      )}
 
       {/* ── Mobile: bottom-sheet trade panel ── */}
       {isMobile && mobilePanel && (
@@ -735,14 +737,21 @@ function TradeAssetChip({ side, symbol, imageUri, color }: { side: "buy" | "sell
 }
 
 // ─── Trades tab ───────────────────────────────────────────────────────────────
+const TRADES_PAGE_SIZE = 10;
 function TradesTab({ token, enabled, priceUsd: _priceUsd }: { token: string; enabled: boolean; priceUsd: number | null }) {
   const { trades, loading } = useTokenTrades(token, enabled);
+  const [page, setPage] = useState(0);
   if (loading && trades.length === 0) return <div className="py-8 text-center text-sm text-muted-foreground">Loading trades…</div>;
   if (trades.length === 0) return <div className="py-8 text-center text-sm text-muted-foreground">No trades yet</div>;
+  // 10 per page — newest first, page through the rest.
+  const pageCount = Math.ceil(trades.length / TRADES_PAGE_SIZE);
+  const safePage = Math.min(page, pageCount - 1);
+  const start = safePage * TRADES_PAGE_SIZE;
+  const paged = trades.slice(start, start + TRADES_PAGE_SIZE);
   return (
     <>
       <ul className="md:hidden divide-y divide-border/50">
-        {trades.map((s) => {
+        {paged.map((s) => {
           const buy = s.side === "BUY";
           return (
             <li key={s.tx_hash} className="px-3 py-3 space-y-1.5">
@@ -772,7 +781,7 @@ function TradesTab({ token, enabled, priceUsd: _priceUsd }: { token: string; ena
             </tr>
           </thead>
           <tbody>
-            {trades.map((s) => {
+            {paged.map((s) => {
               const buy = s.side === "BUY";
               return (
                 <tr key={s.tx_hash} className="border-b border-border/50 row-hover">
@@ -789,6 +798,7 @@ function TradesTab({ token, enabled, priceUsd: _priceUsd }: { token: string; ena
           </tbody>
         </table>
       </div>
+      <Pager page={safePage} pageCount={pageCount} onPage={setPage} />
     </>
   );
 }
