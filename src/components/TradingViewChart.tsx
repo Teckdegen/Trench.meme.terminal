@@ -96,7 +96,7 @@ export function TradingViewChart({
   }, [data]);
 
   return (
-    <div className="relative w-full" style={{ height }}>
+    <div className="relative w-full h-full" style={height > 0 ? { height } : { position: "absolute", inset: 0 }}>
       <div ref={ref} className="absolute inset-0" />
       {isLoading && (
         <div className="absolute inset-0 grid place-items-center text-xs text-muted-foreground pointer-events-none">

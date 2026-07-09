@@ -50,7 +50,7 @@ export function GeckoEmbed({
       allow="clipboard-write"
       allowFullScreen
       className="w-full h-full flex-1 rounded-xl border border-white/5"
-      style={{ minHeight }}
+      style={minHeight > 0 ? { minHeight } : { minHeight: 0 }}
     />
   );
 }

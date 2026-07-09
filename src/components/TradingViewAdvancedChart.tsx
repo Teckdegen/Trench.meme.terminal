@@ -136,7 +136,7 @@ export function TradingViewAdvancedChart({
   }
 
   return (
-    <div className="relative w-full" style={{ height }}>
+    <div className="relative w-full h-full" style={height > 0 ? { height } : { position: "absolute", inset: 0 }}>
       <div ref={containerRef} className="absolute inset-0" />
       {hasLib === null && (
         <div className="absolute inset-0 grid place-items-center text-xs text-muted-foreground pointer-events-none">
