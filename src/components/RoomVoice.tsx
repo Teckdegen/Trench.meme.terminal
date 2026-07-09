@@ -9,10 +9,20 @@
 //   6. Render: participant tiles + mute + deafen + push-to-talk (hold Space)
 
 import { useEffect, useRef, useState } from "react";
-import { Mic, MicOff, Headphones, VolumeX, Hand, PhoneOff } from "lucide-react";
+import { Mic, MicOff, Headphones, VolumeX, Hand, PhoneOff, MicOff as MuteAllIcon } from "lucide-react";
 import { agoraToken } from "@/lib/agora";
+import { setCabalHand, useCabalHands, muteAllCabal, useCabalMuteAll } from "@/lib/cabal";
 
 type Remote = { uid: number | string; audio: boolean; speaking: boolean; muted: boolean };
+
+// Same wallet→uid hash the token server uses, so we can map raised-hand
+// signals (keyed by address) back to Agora participant tiles (keyed by uid).
+function walletToUid(addr: string): number {
+  let h = 0;
+  const s = addr.toLowerCase();
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return (h & 0x7fffffff) || 1;
+}
 
 function recoverFromStaleChunk(error: unknown) {
   if (typeof window === "undefined") return false;
@@ -27,8 +37,8 @@ function recoverFromStaleChunk(error: unknown) {
 }
 
 export function RoomVoice({
-  roomId, identity, onLeave,
-}: { roomId: string; identity: string; onLeave?: () => void }) {
+  roomId, identity, onLeave, isAdmin,
+}: { roomId: string; identity: string; onLeave?: () => void; isAdmin?: boolean }) {
   const clientRef = useRef<any>(null);
   const localTrackRef = useRef<any>(null);
   const [ready, setReady] = useState(false);
@@ -38,6 +48,37 @@ export function RoomVoice({
   const [handUp, setHandUp] = useState(false);
   const [remotes, setRemotes] = useState<Remote[]>([]);
   const [err, setErr] = useState<string | null>(null);
+
+  // Cross-client call control (raise hand + admin mute-all) over cabal realtime.
+  const raisedHands = useCabalHands(roomId);                 // addresses with hand up
+  const handUidSet = new Set(raisedHands.map(walletToUid));  // → Agora uids
+  const muteAllTs = useCabalMuteAll(roomId);
+  const seenMute = useRef<number | null>(null);
+
+  const toggleHand = () => {
+    setHandUp((v) => {
+      const next = !v;
+      void setCabalHand(roomId, identity, next);
+      return next;
+    });
+  };
+
+  // Broadcast an admin "mute everyone" and drop our own hands on unmount.
+  useEffect(() => () => { void setCabalHand(roomId, identity, false); }, [roomId, identity]);
+
+  // React to admin mute-all: baseline the current signal on join, then force
+  // our mic muted on any later bump (admins are exempt — they run it).
+  useEffect(() => {
+    if (!ready) return;
+    if (seenMute.current === null) { seenMute.current = muteAllTs; return; }
+    if (muteAllTs > seenMute.current) {
+      seenMute.current = muteAllTs;
+      if (!isAdmin) {
+        localTrackRef.current?.setMuted(true);
+        setMuted(true);
+      }
+    }
+  }, [muteAllTs, ready, isAdmin]);
 
   // Join on mount, leave on unmount
   useEffect(() => {
@@ -181,7 +222,9 @@ export function RoomVoice({
           <span className={`relative inline-flex size-2 rounded-full ${ready ? "bg-up" : "bg-muted-foreground"}`} />
         </span>
         <span className="text-xs font-semibold text-muted-foreground">
-          {ready ? `Voice · ${count} ${count === 1 ? "person" : "people"}` : "Joining…"}
+          {ready
+            ? `Voice · ${count} ${count === 1 ? "person" : "people"}${raisedHands.length > 0 ? ` · ✋ ${raisedHands.length}` : ""}`
+            : "Joining…"}
         </span>
       </div>
 
@@ -190,7 +233,8 @@ export function RoomVoice({
         <div className="flex flex-wrap items-start justify-center gap-x-5 gap-y-4 max-w-md">
           <Tile label={shortAddr(identity)} muted={muted} speaking={meSpeaking && !muted} self handUp={handUp} />
           {remotes.map((r) => (
-            <Tile key={r.uid} label={shortAddr(String(r.uid))} muted={r.muted} speaking={r.speaking} />
+            <Tile key={r.uid} label={shortAddr(String(r.uid))} muted={r.muted} speaking={r.speaking}
+              handUp={handUidSet.has(Number(r.uid))} />
           ))}
         </div>
       </div>
@@ -216,11 +260,22 @@ export function RoomVoice({
           />
           <CtrlButton
             active={handUp}
-            onClick={() => setHandUp((v) => !v)}
+            onClick={toggleHand}
             disabled={!ready}
             icon={<Hand className="size-5" />}
             label="Raise hand"
           />
+          {isAdmin && (
+            <button
+              onClick={() => void muteAllCabal(roomId)}
+              disabled={!ready}
+              title="Mute everyone"
+              aria-label="Mute everyone"
+              className="size-11 grid place-items-center rounded-full bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 disabled:opacity-40"
+            >
+              <MuteAllIcon className="size-5" />
+            </button>
+          )}
           {onLeave && (
             <button
               onClick={onLeave}

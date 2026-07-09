@@ -507,7 +507,7 @@ function CabalPane({
               <p className="text-[11px] text-muted-foreground">Voice call</p>
             </div>
           </div>
-          <VoicePane roomId={cabal.id} me={me} onClose={() => setInCall(false)} />
+          <VoicePane roomId={cabal.id} me={me} onClose={() => setInCall(false)} isAdmin={isOwner} />
         </div>
       )}
 
@@ -1058,8 +1058,8 @@ function MessageBody({
 // ============================================================================
 // VOICE PANE
 // ============================================================================
-function VoicePane({ roomId, me, onClose }: {
-  roomId: string; me: string | undefined; onClose: () => void;
+function VoicePane({ roomId, me, onClose, isAdmin }: {
+  roomId: string; me: string | undefined; onClose: () => void; isAdmin?: boolean;
 }) {
   if (!me || !import.meta.env.VITE_AGORA_APP_ID) {
     return (
@@ -1075,7 +1075,7 @@ function VoicePane({ roomId, me, onClose }: {
   }
   return (
     <div className="flex-1 flex flex-col min-h-0">
-      <RoomVoice roomId={roomId} identity={me} onLeave={onClose} />
+      <RoomVoice roomId={roomId} identity={me} onLeave={onClose} isAdmin={isAdmin} />
     </div>
   );
 }

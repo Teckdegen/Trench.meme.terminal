@@ -380,3 +380,67 @@ export function useGunTyping(
   }, [scope, id, me]);
   return typers;
 }
+
+// ─────────── Call control signals (raise hand + admin mute-all) ────────────
+// Ephemeral, same namespace as chat. Hands are per-address timestamps; mute-all
+// is a single timestamp the admin bumps, which non-admin clients react to.
+
+export async function gunSetHand(
+  scope: "cabal" | "dm" | "token", id: string, sender: string, up: boolean,
+) {
+  if (!GUN_ENABLED) return;
+  const gun = await getGun();
+  if (!gun) return;
+  gun.get(NS).get(scope).get(id).get("callHands").get(sender.toLowerCase()).put(up ? Date.now() : null);
+}
+
+export function useGunHands(scope: "cabal" | "dm" | "token", id: string | undefined): string[] {
+  const [hands, setHands] = useState<string[]>([]);
+  useEffect(() => {
+    if (!GUN_ENABLED || !id) { setHands([]); return; }
+    let cancel = false;
+    const last: Record<string, number | null> = {};
+    const recompute = () => {
+      const now = Date.now();
+      const live = Object.entries(last)
+        .filter(([, ts]) => typeof ts === "number" && now - (ts as number) < 60_000)
+        .map(([addr]) => addr);
+      if (!cancel) setHands(live);
+    };
+    (async () => {
+      const gun = await getGun();
+      if (!gun || cancel) return;
+      gun.get(NS).get(scope).get(id).get("callHands").map().on((ts: number | null, sender: string) => {
+        last[sender] = typeof ts === "number" ? ts : null;
+        recompute();
+      });
+    })();
+    const iv = setInterval(recompute, 2000);
+    return () => { cancel = true; clearInterval(iv); };
+  }, [scope, id]);
+  return hands;
+}
+
+export async function gunMuteAll(scope: "cabal" | "dm" | "token", id: string) {
+  if (!GUN_ENABLED) return;
+  const gun = await getGun();
+  if (!gun) return;
+  gun.get(NS).get(scope).get(id).get("callMuteAll").put(Date.now());
+}
+
+export function useGunMuteAll(scope: "cabal" | "dm" | "token", id: string | undefined): number {
+  const [ts, setTs] = useState(0);
+  useEffect(() => {
+    if (!GUN_ENABLED || !id) { setTs(0); return; }
+    let cancel = false;
+    (async () => {
+      const gun = await getGun();
+      if (!gun || cancel) return;
+      gun.get(NS).get(scope).get(id).get("callMuteAll").on((v: number) => {
+        if (!cancel && typeof v === "number") setTs(v);
+      });
+    })();
+    return () => { cancel = true; };
+  }, [scope, id]);
+  return ts;
+}

@@ -29,6 +29,10 @@ import {
   useGunReactions,
   gunSetTyping,
   useGunTyping,
+  gunSetHand,
+  useGunHands,
+  gunMuteAll,
+  useGunMuteAll,
   type GunMessage,
 } from "@/lib/gun";
 import { sendDM } from "@/lib/gun-dms";
@@ -746,6 +750,20 @@ export function setCabalTyping(cabalId: string, me: string) {
 }
 export function useCabalTyping(cabalId: string | undefined, me: string | undefined) {
   return useGunTyping("cabal", cabalId, me);
+}
+
+// Voice-call control signals (raise hand + admin mute-all)
+export function setCabalHand(cabalId: string, me: string, up: boolean) {
+  return gunSetHand("cabal", cabalId, me, up);
+}
+export function useCabalHands(cabalId: string | undefined) {
+  return useGunHands("cabal", cabalId);
+}
+export function muteAllCabal(cabalId: string) {
+  return gunMuteAll("cabal", cabalId);
+}
+export function useCabalMuteAll(cabalId: string | undefined) {
+  return useGunMuteAll("cabal", cabalId);
 }
 
 export { inviteMemberToCabal, retryPendingInvites };
