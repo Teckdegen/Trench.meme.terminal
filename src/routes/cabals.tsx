@@ -29,9 +29,6 @@ import {
   sendCabalChat,
   deleteCabalMessage,
   editCabalMessage,
-  useCabalRooms,
-  createCabalRoom,
-  deleteCabalRoom,
   useCabalWatchlist,
   addWatchlist,
   removeWatchlist,
@@ -53,7 +50,7 @@ import { useMe } from "@/lib/useMe";
 import { RoomVoice } from "@/components/RoomVoice";
 import {
   Plus, Lock, Globe, Hash, Volume2, X, UserPlus, KeyRound, Check, Crown,
-  Search, MessageSquare, Camera, MoreHorizontal,
+  Search, MessageSquare, Camera, MoreHorizontal, Phone, ChevronDown,
   Eye, RefreshCw, UserMinus, ShieldCheck, ShieldAlert, SmilePlus, Reply,
   CornerUpLeft, Clock as ClockIcon, Users, Pencil, Trash2, ArrowLeft,
 } from "lucide-react";
@@ -76,7 +73,6 @@ function CabalsPage() {
   void _isMobile; // kept for parity with old API — list/pane handle mobile via CSS now
   const cabals = useMyCabals(me);
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [channel, setChannel] = useState<{ kind: "text" | "watchlist" | "voice"; id?: string }>({ kind: "text" });
   const [creating, setCreating] = useState(false);
   const [joining, setJoining] = useState(false);
   const [joinError, setJoinError] = useState<string | null>(null);
@@ -90,7 +86,6 @@ function CabalsPage() {
   }, [cabals, activeId]);
 
   useEffect(() => {
-    setChannel({ kind: "text" });
     setShowMembers(false);
   }, [activeId]);
 
@@ -111,7 +106,7 @@ function CabalsPage() {
         if (a) resolved.push(a);
       }
       const row = await createCabal({ name, topic, image_uri: image, host_address: me, privacy: "invite", invitees: resolved });
-      if (row) { setActiveId(row.id); setCreating(false); setChannel({ kind: "text" }); }
+      if (row) { setActiveId(row.id); setCreating(false); }
       else setJoinError("Could not create cabal. Check the Gun relay connection.");
     } catch (e) { console.error(e); setJoinError("Could not create cabal"); }
   };
@@ -180,7 +175,7 @@ function CabalsPage() {
 
         {/* ── Active cabal pane (right) ─────────────────────────────── */}
         <section
-          className={`rounded-3xl bg-surface border border-white/5 overflow-hidden flex flex-col ${active ? "flex" : "hidden md:flex"}`}
+          className={`relative rounded-3xl bg-surface border border-white/5 overflow-hidden flex flex-col ${active ? "flex" : "hidden md:flex"}`}
         >
           {!active ? (
             <EmptyCabalPane onNew={() => setCreating(true)} onJoin={() => setJoining(true)} />
@@ -188,12 +183,9 @@ function CabalsPage() {
             <CabalPane
               me={me}
               cabal={active}
-              channel={channel}
-              setChannel={setChannel}
               onBack={() => setActiveId(null)}
               onEdit={() => setEditing(true)}
               onLeave={onLeave}
-              showMembers={showMembers}
               toggleMembers={() => setShowMembers((v) => !v)}
             />
           )}
@@ -403,32 +395,20 @@ function EmptyCabalPane({ onNew, onJoin }: { onNew: () => void; onJoin: () => vo
 // CABAL PANE (right column) — header + room tabs + body
 // ============================================================================
 function CabalPane({
-  me, cabal, channel, setChannel, onBack, onEdit, onLeave, showMembers, toggleMembers,
+  me, cabal, onBack, onEdit, onLeave, toggleMembers,
 }: {
   me: string | undefined;
   cabal: CabalMeta;
-  channel: { kind: "text" | "watchlist" | "voice"; id?: string };
-  setChannel: (c: { kind: "text" | "watchlist" | "voice"; id?: string }) => void;
   onBack: () => void;
   onEdit: () => void;
   onLeave: () => void;
-  showMembers: boolean;
   toggleMembers: () => void;
 }) {
   const members = useCabalMembers(cabal.id);
-  const voiceRooms = useCabalRooms(cabal.id);
   const isOwner = !!me && me.toLowerCase() === cabal.host_address.toLowerCase();
-  const [creatingRoom, setCreatingRoom] = useState(false);
-  const [newRoomName, setNewRoomName] = useState("");
   const [moreOpen, setMoreOpen] = useState(false);
-
-  const createRoom = async () => {
-    if (!me || !newRoomName.trim()) return;
-    const r = await createCabalRoom(cabal.id, me, newRoomName.trim());
-    if (r?.id) setChannel({ kind: "voice", id: r.id });
-    setNewRoomName("");
-    setCreatingRoom(false);
-  };
+  const [inCall, setInCall] = useState(false);
+  const [showWatch, setShowWatch] = useState(false);
 
   return (
     <>
@@ -441,26 +421,42 @@ function CabalPane({
         >
           <ArrowLeft className="size-4" />
         </button>
-        <CabalAvatar cabal={cabal} size={36} />
-        <div className="min-w-0 flex-1">
-          <div className="text-sm font-semibold truncate inline-flex items-center gap-1.5">
-            {cabal.privacy === "invite"
-              ? <Lock className="size-3 text-muted-foreground" />
-              : <Globe className="size-3 text-muted-foreground" />}
-            {cabal.name}
-            {isOwner && <Crown className="size-3 text-primary" />}
+        {/* Avatar + name — tap opens group info (Telegram-style) */}
+        <button onClick={toggleMembers} className="flex items-center gap-3 min-w-0 flex-1 text-left group" title="Group info">
+          <CabalAvatar cabal={cabal} size={36} />
+          <div className="min-w-0 flex-1">
+            <div className="text-sm font-semibold truncate inline-flex items-center gap-1.5">
+              {cabal.privacy === "invite"
+                ? <Lock className="size-3 text-muted-foreground" />
+                : <Globe className="size-3 text-muted-foreground" />}
+              <span className="truncate group-hover:underline">{cabal.name}</span>
+              {isOwner && <Crown className="size-3 text-primary" />}
+            </div>
+            <div className="text-[11px] text-muted-foreground truncate">
+              {cabal.topic || `${members.length} ${members.length === 1 ? "member" : "members"}`}
+            </div>
           </div>
-          <div className="text-[11px] text-muted-foreground truncate">
-            {cabal.topic || `${members.length} ${members.length === 1 ? "member" : "members"}`}
-          </div>
-        </div>
-        <button
-          onClick={toggleMembers}
-          className={`size-9 grid place-items-center rounded-full ${showMembers ? "bg-white/10" : "hover:bg-white/10"} text-muted-foreground hover:text-foreground`}
-          title="Members"
-        >
-          <Users className="size-4" />
         </button>
+
+        {/* Call — one voice call per cabal (no rooms) */}
+        <button
+          onClick={() => setInCall(true)}
+          className="size-9 grid place-items-center rounded-full bg-up/15 text-up hover:bg-up/25"
+          title="Start / join call"
+        >
+          <Phone className="size-4" />
+        </button>
+
+        {/* Watchlist */}
+        <button
+          onClick={() => setShowWatch(true)}
+          className="size-9 grid place-items-center rounded-full hover:bg-white/10 text-muted-foreground hover:text-foreground"
+          title="Watchlist"
+        >
+          <Eye className="size-4" />
+        </button>
+
+        {/* More */}
         <div className="relative">
           <button
             onClick={() => setMoreOpen((v) => !v)}
@@ -471,36 +467,21 @@ function CabalPane({
           </button>
           {moreOpen && (
             <>
-              <button
-                type="button"
-                className="fixed inset-0 z-40"
-                onClick={() => setMoreOpen(false)}
-                aria-label="Close menu"
-              />
-              <div className="absolute top-10 right-0 z-50 w-44 rounded-xl bg-background border border-white/10 shadow-xl py-1 text-sm">
+              <button type="button" className="fixed inset-0 z-40" onClick={() => setMoreOpen(false)} aria-label="Close menu" />
+              <div className="absolute top-10 right-0 z-50 w-48 rounded-xl bg-background border border-white/10 shadow-xl py-1 text-sm">
+                <button onClick={() => { setMoreOpen(false); toggleMembers(); }} className="w-full px-3 py-2 text-left hover:bg-white/5 inline-flex items-center gap-2">
+                  <Users className="size-3.5" /> Group info
+                </button>
                 {isOwner && (
-                  <button
-                    onClick={() => { setMoreOpen(false); onEdit(); }}
-                    className="w-full px-3 py-2 text-left hover:bg-white/5 inline-flex items-center gap-2"
-                  >
+                  <button onClick={() => { setMoreOpen(false); onEdit(); }} className="w-full px-3 py-2 text-left hover:bg-white/5 inline-flex items-center gap-2">
                     <Pencil className="size-3.5" /> Edit group info
                   </button>
                 )}
-                <button
-                  onClick={() => {
-                    navigator.clipboard?.writeText(cabal.invite_code);
-                    setMoreOpen(false);
-                  }}
-                  className="w-full px-3 py-2 text-left hover:bg-white/5 inline-flex items-center gap-2"
-                >
+                <button onClick={() => { navigator.clipboard?.writeText(cabal.invite_code); setMoreOpen(false); }} className="w-full px-3 py-2 text-left hover:bg-white/5 inline-flex items-center gap-2">
                   <KeyRound className="size-3.5" /> Copy invite code
                 </button>
-                <button
-                  onClick={() => { setMoreOpen(false); onLeave(); }}
-                  className="w-full px-3 py-2 text-left hover:bg-down/15 text-down inline-flex items-center gap-2"
-                >
-                  <Trash2 className="size-3.5" />
-                  {isOwner ? "Delete cabal" : "Leave cabal"}
+                <button onClick={() => { setMoreOpen(false); onLeave(); }} className="w-full px-3 py-2 text-left hover:bg-down/15 text-down inline-flex items-center gap-2">
+                  <Trash2 className="size-3.5" /> {isOwner ? "Delete cabal" : "Leave cabal"}
                 </button>
               </div>
             </>
@@ -508,113 +489,43 @@ function CabalPane({
         </div>
       </div>
 
-      {/* Room tabs — general / watchlist / voice rooms / + (create) */}
-      <div className="border-b border-white/5 shrink-0 overflow-x-auto scrollbar-hide">
-        <div className="flex items-center gap-1 px-2 py-2 min-w-fit">
-          <RoomTab
-            icon={<Hash className="size-3.5" />}
-            label="general"
-            active={channel.kind === "text"}
-            onClick={() => setChannel({ kind: "text" })}
-          />
-          <RoomTab
-            icon={<Eye className="size-3.5" />}
-            label="watchlist"
-            active={channel.kind === "watchlist"}
-            onClick={() => setChannel({ kind: "watchlist" })}
-          />
-          {voiceRooms.map((r: any) => {
-            const canDelete = !!me && (
-              me.toLowerCase() === cabal.host_address.toLowerCase() ||
-              me.toLowerCase() === (r.created_by ?? "").toLowerCase()
-            );
-            return (
-              <RoomTab
-                key={r.id}
-                icon={<Volume2 className="size-3.5" />}
-                label={r.name}
-                active={channel.kind === "voice" && channel.id === r.id}
-                onClick={() => setChannel({ kind: "voice", id: r.id })}
-                suffix={canDelete ? (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (!confirm(`Delete room "${r.name}"?`)) return;
-                      if (channel.kind === "voice" && channel.id === r.id) {
-                        setChannel({ kind: "text" });
-                      }
-                      void deleteCabalRoom(cabal.id, r.id);
-                    }}
-                    title="Delete room"
-                    className="size-4 grid place-items-center rounded text-muted-foreground hover:text-down"
-                  >
-                    <X className="size-3" />
-                  </button>
-                ) : (r.participant_count > 0 ? (
-                  <span className="text-[10px] text-muted-foreground">{r.participant_count}</span>
-                ) : null)}
-              />
-            );
-          })}
-          {creatingRoom ? (
-            <input
-              autoFocus
-              value={newRoomName}
-              onChange={(e) => setNewRoomName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") createRoom();
-                if (e.key === "Escape") { setCreatingRoom(false); setNewRoomName(""); }
-              }}
-              onBlur={() => { if (!newRoomName.trim()) setCreatingRoom(false); }}
-              placeholder="room-name"
-              className="h-8 w-32 px-2 rounded-full bg-background border border-primary/40 text-xs focus:outline-none"
-            />
-          ) : (
-            <button
-              onClick={() => setCreatingRoom(true)}
-              className="size-8 grid place-items-center rounded-full bg-white/5 hover:bg-white/10 text-muted-foreground hover:text-foreground"
-              title="Create voice room"
-            >
-              <Plus className="size-3.5" />
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Body */}
+      {/* Body — plain group chat (no rooms, no channel tabs) */}
       <div className="flex-1 overflow-hidden flex flex-col">
-        {channel.kind === "text" && <DiscordChat cabal={cabal} me={me} />}
-        {channel.kind === "watchlist" && <WatchlistPane cabalId={cabal.id} me={me} hostAddress={cabal.host_address} />}
-        {channel.kind === "voice" && channel.id && (
-          <VoicePane roomId={channel.id} me={me} onClose={() => setChannel({ kind: "text" })} />
-        )}
+        <DiscordChat cabal={cabal} me={me} />
       </div>
-    </>
-  );
-}
 
-function RoomTab({
-  icon, label, active, onClick, suffix,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  active: boolean;
-  onClick: () => void;
-  suffix?: React.ReactNode;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={`h-8 px-3 rounded-full text-xs font-semibold inline-flex items-center gap-1.5 transition-colors shrink-0 ${
-        active
-          ? "bg-primary/15 text-primary border border-primary/30"
-          : "bg-white/5 text-muted-foreground hover:text-foreground hover:bg-white/10 border border-transparent"
-      }`}
-    >
-      <span className="opacity-90">{icon}</span>
-      <span className="truncate max-w-[140px]">{label}</span>
-      {suffix}
-    </button>
+      {/* Voice call overlay — single call per cabal, TG-style screen */}
+      {inCall && (
+        <div className="absolute inset-0 z-30 flex flex-col" style={{ background: "#0a0612" }}>
+          <div className="px-3 py-3 border-b border-white/5 flex items-center gap-3 shrink-0">
+            <button onClick={() => setInCall(false)} className="size-8 grid place-items-center rounded-full hover:bg-white/10" aria-label="Back to chat">
+              <ChevronDown className="size-4" />
+            </button>
+            <CabalAvatar cabal={cabal} size={28} />
+            <div className="min-w-0">
+              <p className="text-sm font-semibold truncate">{cabal.name}</p>
+              <p className="text-[11px] text-muted-foreground">Voice call</p>
+            </div>
+          </div>
+          <VoicePane roomId={cabal.id} me={me} onClose={() => setInCall(false)} />
+        </div>
+      )}
+
+      {/* Watchlist overlay */}
+      {showWatch && (
+        <div className="absolute inset-0 z-30 flex flex-col bg-surface">
+          <div className="px-3 py-3 border-b border-white/5 flex items-center gap-3 shrink-0">
+            <button onClick={() => setShowWatch(false)} className="size-8 grid place-items-center rounded-full hover:bg-white/10" aria-label="Back">
+              <ArrowLeft className="size-4" />
+            </button>
+            <p className="text-sm font-semibold">Watchlist</p>
+          </div>
+          <div className="flex-1 overflow-hidden flex flex-col">
+            <WatchlistPane cabalId={cabal.id} me={me} hostAddress={cabal.host_address} />
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
