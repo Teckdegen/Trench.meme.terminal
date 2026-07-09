@@ -7,7 +7,7 @@ import { useDexScreenerPair, DexScreenerEmbed } from "@/components/DexScreenerCh
 import { WatchButton } from "@/components/WatchButton";
 import { fmtPct } from "@/lib/fmt";
 import { WalletLabel, HandleLink, UserAvatar } from "@/components/Handle";
-import { Copy, Check, Settings, ChevronDown, Image as ImageIcon, Globe, Send, Loader2, X, ArrowUp, ArrowDown } from "lucide-react";
+import { Copy, Check, Settings, ChevronDown, Image as ImageIcon, Globe, Send, Loader2, TrendingUp } from "lucide-react";
 import { renderMentions } from "@/lib/renderMentions";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
@@ -152,8 +152,8 @@ function TokenPage() {
   const chartLoading = (wantDs && ds.state === "loading") || (wantGecko && gecko.state === "loading");
   const showTfButtons = !dsActive && !geckoActive;
 
-  // Mobile bottom-sheet state
-  const [mobilePanel, setMobilePanel] = useState<"buy" | "sell" | null>(null);
+  // Mobile bottom-sheet state — null = closed, open = trade sheet
+  const [mobilePanel, setMobilePanel] = useState<boolean>(false);
 
   const tradePanel = (
     <TradePanelContent
@@ -174,8 +174,10 @@ function TokenPage() {
   );
 
   return (
-    // Full-height flex column — header + chart row + tabs, no outer scroll
-    <div className="flex flex-col h-full min-h-0 overflow-hidden">
+    // Outer wrapper: scrollable column. The FIRST child fills 100vh (header +
+    // chart + trade panel). The SECOND child (tabs + data) starts on the next
+    // scroll, so users always see the chart without scrolling.
+    <div className="flex flex-col min-h-0">
       {(blockCheck.tokenBlocked || blockCheck.launcherBlocked) && (
         <BlocklistWarning
           tokenAddress={t.addr} symbol={liveSymbol} check={blockCheck}
@@ -185,62 +187,78 @@ function TokenPage() {
         />
       )}
 
-      {/* ── Slim one-line token header ── */}
-      <TokenHeader
-        name={liveName} symbol={liveSymbol} image={liveImage} addr={t.addr}
-        color={t.color} snapshot={snapshot}
-        mcap={liveMcap} price={livePrice} liq={liveLiq} vol={liveVol} p24h={liveP24h}
-      />
+      {/* ── Above-fold section: fills exactly the visible screen ── */}
+      <div className="flex flex-col" style={{ height: "calc(100vh - 56px)" }}>
 
-      {/* ── Main area: chart + (desktop) trade panel ── */}
-      <div className="flex-1 min-h-0 flex flex-col xl:flex-row overflow-hidden">
+        {/* Slim one-line token header */}
+        <TokenHeader
+          name={liveName} symbol={liveSymbol} image={liveImage} addr={t.addr}
+          color={t.color} snapshot={snapshot}
+          mcap={liveMcap} price={livePrice} liq={liveLiq} vol={liveVol} p24h={liveP24h}
+        />
 
-        {/* Chart column — fills all available height */}
-        <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
-          {/* Timeframe bar — only when not using an embed that has its own */}
-          {showTfButtons && (
-            <div className="shrink-0 px-3 py-1.5 flex items-center gap-1.5 overflow-x-auto scrollbar-hide"
-              style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-              {(["3m", "5m", "15m", "1h", "4h", "1d"] as const).map((x) => (
-                <button key={x} onClick={() => setTimeframe(x)}
-                  className={`h-7 px-2.5 rounded-md text-xs font-semibold shrink-0 transition-colors ${
-                    timeframe === x ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
-                  }`}>
-                  {x}
-                </button>
-              ))}
-            </div>
-          )}
+        {/* Chart + trade panel — takes all remaining height in the above-fold */}
+        <div className="flex-1 min-h-0 flex flex-col xl:flex-row overflow-hidden">
 
-          {/* Chart — flex-1 so it always fills remaining height */}
-          <div className="flex-1 min-h-0 relative overflow-hidden">
-            {chartLoading ? (
-              <div className="absolute inset-0 grid place-items-center text-muted-foreground">
-                <Loader2 className="size-5 animate-spin" />
+          {/* Chart column */}
+          <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+            {showTfButtons && (
+              <div className="shrink-0 px-3 py-1.5 flex items-center gap-1.5 overflow-x-auto scrollbar-hide"
+                style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+                {(["3m", "5m", "15m", "1h", "4h", "1d"] as const).map((x) => (
+                  <button key={x} onClick={() => setTimeframe(x)}
+                    className={`h-7 px-2.5 rounded-md text-xs font-semibold shrink-0 transition-colors ${
+                      timeframe === x ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+                    }`}>
+                    {x}
+                  </button>
+                ))}
               </div>
-            ) : dsActive && ds.state === "pair" ? (
-              <DexScreenerEmbed pair={ds.pair} className="absolute inset-0 w-full h-full" />
-            ) : geckoActive ? (
-              <GeckoEmbed pool={gecko.pool!} network={gecko.network} minHeight={0} />
-            ) : isContract(t.addr) ? (
-              <TradingViewAdvancedChart token={t.addr} symbol={liveSymbol} interval={timeframe} height={0} />
-            ) : (
-              <CandleChart height={300} />
             )}
+
+            {/* Chart fills all remaining height in this column */}
+            <div className="flex-1 min-h-0 relative overflow-hidden">
+              {chartLoading ? (
+                <div className="absolute inset-0 grid place-items-center text-muted-foreground">
+                  <Loader2 className="size-5 animate-spin" />
+                </div>
+              ) : dsActive && ds.state === "pair" ? (
+                <DexScreenerEmbed pair={ds.pair} className="absolute inset-0 w-full h-full" />
+              ) : geckoActive ? (
+                <GeckoEmbed pool={gecko.pool!} network={gecko.network} minHeight={0} />
+              ) : isContract(t.addr) ? (
+                <TradingViewAdvancedChart token={t.addr} symbol={liveSymbol} interval={timeframe} height={0} />
+              ) : (
+                <CandleChart height={300} />
+              )}
+            </div>
           </div>
+
+          {/* Trade panel — desktop sidebar */}
+          {!isMobile && (
+            <aside className="shrink-0 w-[300px] xl:w-[320px] flex flex-col overflow-y-auto"
+              style={{ borderLeft: "1px solid rgba(255,255,255,0.06)" }}>
+              <div className="p-3 flex-1 flex flex-col gap-3">{tradePanel}</div>
+            </aside>
+          )}
         </div>
 
-        {/* Trade panel — desktop only (right sidebar) */}
-        {!isMobile && (
-          <aside className="shrink-0 w-[300px] xl:w-[320px] flex flex-col overflow-y-auto"
-            style={{ borderLeft: "1px solid rgba(255,255,255,0.06)" }}>
-            <div className="p-3 flex-1 flex flex-col gap-3">{tradePanel}</div>
-          </aside>
+        {/* Mobile: single Trade button pinned at the bottom of the above-fold */}
+        {isMobile && (
+          <div className="shrink-0 px-3 py-2.5"
+            style={{ borderTop: "1px solid rgba(255,255,255,0.08)", background: "#0a0612" }}>
+            <button
+              onClick={() => setMobilePanel(true)}
+              className="w-full h-12 rounded-2xl font-black text-sm flex items-center justify-center gap-2 text-white transition-all active:scale-[0.98]"
+              style={{ background: "linear-gradient(135deg, #8b5cf6, #6d28d9)", boxShadow: "0 4px 0 rgba(0,0,0,0.4), 0 0 20px rgba(139,92,246,0.3)" }}>
+              <TrendingUp className="size-4" strokeWidth={2.5} /> Trade
+            </button>
+          </div>
         )}
       </div>
 
-      {/* ── Bottom tabs ── */}
-      <div className="shrink-0" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+      {/* ── Below-fold: tabs + data (scroll to reach) ── */}
+      <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
         <div className="px-2 py-1.5 flex items-center gap-1 overflow-x-auto scrollbar-hide">
           {bottomTabs.map((tab) => (
             <button key={tab} onClick={() => setActiveTab(tab)}
@@ -254,45 +272,22 @@ function TokenPage() {
             USD <ChevronDown className="size-3" />
           </button>
         </div>
-        <div className="max-h-64 overflow-y-auto">
-          {activeTab === "Chat" ? (
-            <TokenChat tokenAddress={t.addr} symbol={liveSymbol} enabled={activeTab === "Chat"} />
-          ) : activeTab === "Trades" && isContract(t.addr) ? (
-            <TradesTab token={t.addr} enabled={activeTab === "Trades"} priceUsd={market?.price_usd ?? null} />
-          ) : activeTab === "Holders" && isContract(t.addr) ? (
-            <HoldersTab token={t.addr} enabled={activeTab === "Holders"} priceUsd={market?.price_usd ?? null} dev={creatorOnChain} />
-          ) : (
-            <div className="py-8 text-center text-sm text-muted-foreground">Select a tab above.</div>
-          )}
-        </div>
+        {activeTab === "Chat" ? (
+          <TokenChat tokenAddress={t.addr} symbol={liveSymbol} enabled={activeTab === "Chat"} />
+        ) : activeTab === "Trades" && isContract(t.addr) ? (
+          <TradesTab token={t.addr} enabled={activeTab === "Trades"} priceUsd={market?.price_usd ?? null} />
+        ) : activeTab === "Holders" && isContract(t.addr) ? (
+          <HoldersTab token={t.addr} enabled={activeTab === "Holders"} priceUsd={market?.price_usd ?? null} dev={creatorOnChain} />
+        ) : (
+          <div className="py-8 text-center text-sm text-muted-foreground">Select a tab above.</div>
+        )}
       </div>
 
-      {/* ── Mobile: bottom bar Buy/Sell buttons ── */}
-      {isMobile && (
-        <div className="shrink-0 flex gap-2 p-3 pb-safe"
-          style={{ borderTop: "1px solid rgba(255,255,255,0.08)", background: "#0a0612" }}>
-          <button
-            onClick={() => setMobilePanel(mobilePanel === "buy" ? null : "buy")}
-            className="flex-1 h-12 rounded-2xl font-black text-sm flex items-center justify-center gap-2 text-white"
-            style={{ background: mobilePanel === "buy" ? "#16a34a" : "#22c55e", boxShadow: "0 4px 0 rgba(0,0,0,0.4)" }}>
-            <ArrowUp className="size-4" strokeWidth={3} /> Buy
-          </button>
-          <button
-            onClick={() => setMobilePanel(mobilePanel === "sell" ? null : "sell")}
-            className="flex-1 h-12 rounded-2xl font-black text-sm flex items-center justify-center gap-2 text-white"
-            style={{ background: mobilePanel === "sell" ? "#b91c1c" : "#ef4444", boxShadow: "0 4px 0 rgba(0,0,0,0.4)" }}>
-            <ArrowDown className="size-4" strokeWidth={3} /> Sell
-          </button>
-        </div>
-      )}
-
-      {/* ── Mobile bottom sheet trade panel ── */}
+      {/* ── Mobile: bottom-sheet trade panel ── */}
       {isMobile && mobilePanel && (
         <>
-          {/* Backdrop */}
           <div className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm"
-            onClick={() => setMobilePanel(null)} />
-          {/* Sheet — bottom half of screen */}
+            onClick={() => setMobilePanel(false)} />
           <div className="fixed bottom-0 left-0 right-0 z-50 rounded-t-3xl overflow-hidden flex flex-col"
             style={{
               maxHeight: "55vh",
@@ -302,14 +297,12 @@ function TokenPage() {
               boxShadow: "0 -10px 40px rgba(0,0,0,0.6)",
               animation: "slideUp 200ms cubic-bezier(0.16,1,0.3,1)",
             }}>
-            {/* Drag handle */}
             <div className="shrink-0 flex justify-center pt-3 pb-1">
               <div className="w-10 h-1 rounded-full" style={{ background: "rgba(255,255,255,0.2)" }} />
             </div>
-            {/* Force the side to match which button was tapped */}
             <div className="flex-1 overflow-y-auto px-4 pb-6">
               <TradePanelContent
-                side={mobilePanel} setSide={(s: "buy" | "sell") => { setSide(s); setMobilePanel(s); }}
+                side={side} setSide={(s: "buy" | "sell") => setSide(s)}
                 orderType={orderType} setOrderType={setOrderType}
                 amount={amount} setAmount={setAmount}
                 limitPrice={limitPrice} setLimitPrice={setLimitPrice}
