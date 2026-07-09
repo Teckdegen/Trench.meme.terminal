@@ -197,10 +197,11 @@ function TokenPage() {
           mcap={liveMcap} price={livePrice} liq={liveLiq} vol={liveVol} p24h={liveP24h}
         />
 
-        {/* Chart + trade panel — takes all remaining height in the above-fold */}
-        <div className="flex-1 min-h-0 flex flex-col xl:flex-row overflow-hidden">
+        {/* Chart + trade panel — side by side, SAME height, always row on desktop */}
+        <div className="flex-1 min-h-0 flex overflow-hidden"
+          style={{ flexDirection: "row" }}>
 
-          {/* Chart column */}
+          {/* Chart column — fills all space left of the trade panel */}
           <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
             {showTfButtons && (
               <div className="shrink-0 px-3 py-1.5 flex items-center gap-1.5 overflow-x-auto scrollbar-hide"
@@ -216,7 +217,7 @@ function TokenPage() {
               </div>
             )}
 
-            {/* Chart fills all remaining height in this column */}
+            {/* Chart — fills all remaining height, same height as trade panel */}
             <div className="flex-1 min-h-0 relative overflow-hidden">
               {chartLoading ? (
                 <div className="absolute inset-0 grid place-items-center text-muted-foreground">
@@ -234,11 +235,11 @@ function TokenPage() {
             </div>
           </div>
 
-          {/* Trade panel — desktop sidebar */}
+          {/* Trade panel — right sidebar, desktop only. Same height as chart via flex row. */}
           {!isMobile && (
-            <aside className="shrink-0 w-[300px] xl:w-[320px] flex flex-col overflow-y-auto"
+            <aside className="shrink-0 w-[280px] lg:w-[300px] xl:w-[320px] flex flex-col overflow-y-auto"
               style={{ borderLeft: "1px solid rgba(255,255,255,0.06)" }}>
-              <div className="p-3 flex-1 flex flex-col gap-3">{tradePanel}</div>
+              <div className="p-3 flex flex-col gap-3">{tradePanel}</div>
             </aside>
           )}
         </div>
@@ -325,7 +326,7 @@ function TokenPage() {
   );
 }
 
-// ─── Slim one-line token header (matches reference image) ────────────────────
+// ─── Single-row token header — exactly like the reference screenshot ─────────
 function TokenHeader({
   name, symbol, image, addr, color, snapshot,
   mcap, price, liq, p24h,
@@ -342,79 +343,64 @@ function TokenHeader({
   };
 
   return (
-    <div className="shrink-0 flex items-center gap-2 px-3 py-2 overflow-x-auto scrollbar-hide"
-      style={{ borderBottom: "1px solid rgba(255,255,255,0.07)", minHeight: 52 }}>
+    // Single row, no wrapping, horizontal scroll on small screens
+    <div className="shrink-0 flex items-center gap-2.5 px-3 overflow-x-auto scrollbar-hide"
+      style={{ borderBottom: "1px solid rgba(255,255,255,0.07)", height: 48, minHeight: 48 }}>
 
-      {/* Star / watch */}
-      {isContract(addr) && <WatchButton address={addr} size={16} className="shrink-0" />}
+      {/* Watch star */}
+      {isContract(addr) && <WatchButton address={addr} size={15} className="shrink-0 opacity-70 hover:opacity-100" />}
 
       {/* Avatar */}
       {image ? (
-        <img src={image} alt={symbol} className="size-8 rounded-full object-cover shrink-0 ring-1 ring-white/10" />
+        <img src={image} alt={symbol} className="size-7 rounded-full object-cover shrink-0 ring-1 ring-white/10" />
       ) : (
-        <span className="size-8 rounded-full grid place-items-center text-xs font-bold text-background shrink-0"
+        <span className="size-7 rounded-full grid place-items-center text-[10px] font-bold text-background shrink-0"
           style={{ background: color }}>{symbol.slice(0, 2)}</span>
       )}
 
-      {/* Symbol + name */}
-      <div className="shrink-0 flex items-baseline gap-1.5">
-        <span className="font-black text-white text-sm">{symbol}</span>
-        <span className="text-xs text-muted-foreground hidden sm:inline truncate max-w-[120px]">{name}</span>
-      </div>
-
-      {/* Age + short address + copy */}
+      {/* SYMBOL  Full Name  age  address  socials — all inline, no line break */}
+      <span className="shrink-0 font-black text-white text-sm">{symbol}</span>
+      <span className="shrink-0 text-xs text-muted-foreground">{name}</span>
       {snapshot?.created_at && (
-        <span className="shrink-0 text-[11px] text-muted-foreground hidden sm:inline">
-          {timeAgo(snapshot.created_at)}
-        </span>
+        <span className="shrink-0 text-[11px] text-muted-foreground">{timeAgo(snapshot.created_at)}</span>
       )}
       <button onClick={copy}
         className="shrink-0 inline-flex items-center gap-1 text-[11px] font-mono text-muted-foreground hover:text-foreground">
         {shortAddr(addr)}
         {copied ? <Check className="size-3 text-up" /> : <Copy className="size-3" />}
       </button>
-
-      {/* Socials */}
       {snapshot?.website && (
-        <a href={snapshot.website} target="_blank" rel="noreferrer"
-          className="shrink-0 grid place-items-center text-muted-foreground hover:text-foreground">
-          <Globe className="size-3.5" />
-        </a>
+        <a href={snapshot.website} target="_blank" rel="noreferrer" aria-label="Website"
+          className="shrink-0 text-muted-foreground hover:text-foreground"><Globe className="size-3.5" /></a>
       )}
       {snapshot?.twitter && (
-        <a href={snapshot.twitter} target="_blank" rel="noreferrer"
-          className="shrink-0 grid place-items-center text-muted-foreground hover:text-foreground">
-          <XGlyph />
-        </a>
+        <a href={snapshot.twitter} target="_blank" rel="noreferrer" aria-label="X"
+          className="shrink-0 text-muted-foreground hover:text-foreground"><XGlyph /></a>
       )}
       {snapshot?.telegram && (
-        <a href={snapshot.telegram} target="_blank" rel="noreferrer"
-          className="shrink-0 grid place-items-center text-muted-foreground hover:text-foreground">
-          <Send className="size-3.5" />
-        </a>
+        <a href={snapshot.telegram} target="_blank" rel="noreferrer" aria-label="Telegram"
+          className="shrink-0 text-muted-foreground hover:text-foreground"><Send className="size-3.5" /></a>
       )}
 
-      {/* Spacer */}
-      <div className="flex-1 min-w-0" />
+      {/* Push stats to the right */}
+      <div className="flex-1 min-w-[16px]" />
 
-      {/* Stats — all on the same line */}
-      <div className="shrink-0 flex items-center gap-4">
-        <HeaderStat label="MCAP" value={mcap} />
-        <HeaderStat label="Price" value={price} />
-        <HeaderStat label="Liquidity" value={liq} />
-        <HeaderStat label="24h" value={fmtPct(p24h)} colored={p24h >= 0} />
+      {/* MCAP · Price · Liquidity · 24h — all inline on the same row */}
+      <div className="shrink-0 flex items-center gap-5">
+        <InlineStat label="MCAP" value={mcap} />
+        <InlineStat label="Price" value={price} />
+        <InlineStat label="Liquidity" value={liq} />
+        <InlineStat label="24h" value={fmtPct(p24h)} color={p24h >= 0 ? "var(--color-success)" : "var(--color-destructive)"} />
       </div>
     </div>
   );
 }
 
-function HeaderStat({ label, value, colored }: { label: string; value: string; colored?: boolean }) {
+function InlineStat({ label, value, color }: { label: string; value: string; color?: string }) {
   return (
     <div className="text-right">
-      <div className="text-[10px] text-muted-foreground">{label}</div>
-      <div className={`text-xs font-bold tabular-nums ${
-        colored === true ? "text-up" : colored === false ? "text-down" : "text-foreground"
-      }`}>{value}</div>
+      <div className="text-[10px] leading-none mb-0.5" style={{ color: "rgba(245,243,255,0.45)" }}>{label}</div>
+      <div className="text-xs font-bold tabular-nums leading-none" style={{ color: color ?? "var(--color-foreground)" }}>{value}</div>
     </div>
   );
 }
