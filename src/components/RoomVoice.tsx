@@ -9,7 +9,7 @@
 //   6. Render: participant tiles + mute + deafen + push-to-talk (hold Space)
 
 import { useEffect, useRef, useState } from "react";
-import { Mic, MicOff, Headphones, VolumeX, Hand } from "lucide-react";
+import { Mic, MicOff, Headphones, VolumeX, Hand, PhoneOff } from "lucide-react";
 import { agoraToken } from "@/lib/agora";
 
 type Remote = { uid: number | string; audio: boolean; speaking: boolean; muted: boolean };
@@ -166,57 +166,77 @@ export function RoomVoice({
 
   if (err) return <p className="text-xs text-down px-3 py-2">{err}</p>;
 
+  const count = remotes.length + 1;
+
+  // Telegram-style call screen: header, centered circular participant grid with
+  // speaking rings, then a floating pill control bar. All in the trench theme.
   return (
-    <div className="border-t border-white/10">
-      {/* Participant tiles — Discord-style grid */}
-      <div className="px-3 pt-3 pb-2 flex flex-wrap gap-2">
-        <Tile label={shortAddr(identity)} muted={muted} speaking={meSpeaking} self handUp={handUp} />
-        {remotes.map((r) => (
-          <Tile key={r.uid} label={shortAddr(String(r.uid))} muted={r.muted} speaking={r.speaking} />
-        ))}
+    <div className="flex flex-col flex-1 min-h-0"
+      style={{ background: "radial-gradient(ellipse at 50% 0%, rgba(139,92,246,0.14), transparent 60%), #0a0612" }}>
+
+      {/* Header */}
+      <div className="shrink-0 flex items-center justify-center gap-2 pt-4 pb-2">
+        <span className="relative flex size-2">
+          <span className={`absolute inline-flex h-full w-full rounded-full ${ready ? "bg-up animate-ping opacity-60" : "bg-muted-foreground"}`} />
+          <span className={`relative inline-flex size-2 rounded-full ${ready ? "bg-up" : "bg-muted-foreground"}`} />
+        </span>
+        <span className="text-xs font-semibold text-muted-foreground">
+          {ready ? `Voice · ${count} ${count === 1 ? "person" : "people"}` : "Joining…"}
+        </span>
       </div>
 
-      {/* Control bar */}
-      <div className="px-3 pb-3 flex items-center gap-2">
-        <CtrlButton
-          active={!muted}
-          onClick={toggleMute}
-          disabled={!ready || deafened}
-          icon={muted ? <MicOff className="size-4" /> : <Mic className="size-4" />}
-          label={muted ? "Unmute" : "Mute"}
-        />
-        <CtrlButton
-          active={!deafened}
-          danger={deafened}
-          onClick={toggleDeafen}
-          disabled={!ready}
-          icon={deafened ? <VolumeX className="size-4" /> : <Headphones className="size-4" />}
-          label={deafened ? "Undeafen" : "Deafen"}
-        />
-        <CtrlButton
-          active={handUp}
-          onClick={() => setHandUp((v) => !v)}
-          disabled={!ready}
-          icon={<Hand className="size-4" />}
-          label="Raise hand"
-        />
-        <div className="flex-1 text-[11px] text-muted-foreground text-right">
-          {ready ? (
-            <>
-              {remotes.length + 1} in voice
-              <span className="ml-2 hidden sm:inline opacity-60">· hold Space to talk</span>
-            </>
-          ) : "Joining…"}
+      {/* Participant grid */}
+      <div className="flex-1 min-h-0 overflow-y-auto grid place-items-center px-4 py-3">
+        <div className="flex flex-wrap items-start justify-center gap-x-5 gap-y-4 max-w-md">
+          <Tile label={shortAddr(identity)} muted={muted} speaking={meSpeaking && !muted} self handUp={handUp} />
+          {remotes.map((r) => (
+            <Tile key={r.uid} label={shortAddr(String(r.uid))} muted={r.muted} speaking={r.speaking} />
+          ))}
         </div>
-        {onLeave && (
-          <button
-            onClick={onLeave}
-            className="h-9 px-3 rounded-full bg-down/20 text-down text-[11px] font-semibold"
-          >
-            Leave
-          </button>
-        )}
       </div>
+
+      {/* Floating pill control bar */}
+      <div className="shrink-0 flex justify-center pb-4 pt-1">
+        <div className="flex items-center gap-2 px-3 py-2 rounded-full"
+          style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.08)", boxShadow: "0 8px 30px rgba(0,0,0,0.4)" }}>
+          <CtrlButton
+            active={!muted}
+            onClick={toggleMute}
+            disabled={!ready || deafened}
+            icon={muted ? <MicOff className="size-5" /> : <Mic className="size-5" />}
+            label={muted ? "Unmute" : "Mute"}
+          />
+          <CtrlButton
+            active={!deafened}
+            danger={deafened}
+            onClick={toggleDeafen}
+            disabled={!ready}
+            icon={deafened ? <VolumeX className="size-5" /> : <Headphones className="size-5" />}
+            label={deafened ? "Undeafen" : "Deafen"}
+          />
+          <CtrlButton
+            active={handUp}
+            onClick={() => setHandUp((v) => !v)}
+            disabled={!ready}
+            icon={<Hand className="size-5" />}
+            label="Raise hand"
+          />
+          {onLeave && (
+            <button
+              onClick={onLeave}
+              title="Leave call"
+              aria-label="Leave call"
+              className="size-11 grid place-items-center rounded-full bg-down text-white transition-transform active:scale-95"
+              style={{ boxShadow: "0 4px 14px rgba(239,68,68,0.4)" }}
+            >
+              <PhoneOff className="size-5" />
+            </button>
+          )}
+        </div>
+      </div>
+      <p className="shrink-0 text-center text-[10px] text-muted-foreground/60 pb-2 hidden sm:block">
+        Hold Space to talk
+      </p>
     </div>
   );
 }
@@ -225,29 +245,35 @@ function Tile({
   label, muted, speaking, self, handUp,
 }: { label: string; muted: boolean; speaking: boolean; self?: boolean; handUp?: boolean }) {
   return (
-    <div
-      className="relative flex flex-col items-center gap-1 p-2 rounded-xl bg-white/5 transition-all"
-      style={{
-        boxShadow: speaking && !muted ? "0 0 0 2px rgb(34 197 94)" : "0 0 0 2px transparent",
-        minWidth: 64,
-      }}
-    >
-      <div className="size-10 rounded-full bg-primary/15 text-primary grid place-items-center text-[10px] font-bold uppercase">
-        {label.slice(0, 2)}
+    <div className="relative flex flex-col items-center gap-1.5" style={{ width: 76 }}>
+      <div className="relative">
+        {/* Speaking ring — purple glow that pulses while talking */}
+        <div
+          className="size-16 rounded-full grid place-items-center text-sm font-bold uppercase transition-all"
+          style={{
+            background: "linear-gradient(135deg, rgba(168,85,247,0.25), rgba(109,40,217,0.25))",
+            color: "#c4b5fd",
+            boxShadow: speaking
+              ? "0 0 0 3px #a855f7, 0 0 22px rgba(168,85,247,0.55)"
+              : "0 0 0 2px rgba(255,255,255,0.06)",
+          }}
+        >
+          {label.slice(0, 2)}
+        </div>
+        {muted && (
+          <span className="absolute -bottom-0.5 -right-0.5 size-6 rounded-full bg-down grid place-items-center ring-2 ring-[#0a0612]">
+            <MicOff className="size-3 text-white" />
+          </span>
+        )}
+        {handUp && (
+          <span className="absolute -top-0.5 -left-0.5 size-6 rounded-full bg-primary grid place-items-center ring-2 ring-[#0a0612]">
+            <Hand className="size-3 text-white" />
+          </span>
+        )}
       </div>
-      <span className="text-[10px] font-mono opacity-80 truncate max-w-[60px]">
+      <span className="text-[11px] font-mono opacity-80 truncate max-w-[74px]">
         {self ? "You" : label}
       </span>
-      {muted && (
-        <span className="absolute -top-1 -right-1 size-5 rounded-full bg-down grid place-items-center">
-          <MicOff className="size-2.5 text-white" />
-        </span>
-      )}
-      {handUp && (
-        <span className="absolute -top-1 -left-1 size-5 rounded-full bg-primary grid place-items-center">
-          <Hand className="size-2.5 text-white" />
-        </span>
-      )}
     </div>
   );
 }
@@ -264,10 +290,10 @@ function CtrlButton({
       disabled={disabled}
       title={label}
       aria-label={label}
-      className={`size-10 grid place-items-center rounded-full disabled:opacity-40 transition-colors ${
+      className={`size-11 grid place-items-center rounded-full disabled:opacity-40 transition-colors ${
         danger ? "bg-down text-white"
-          : active ? "bg-up text-background"
-          : "bg-white/5 hover:bg-white/10"
+          : active ? "bg-primary text-primary-foreground"
+          : "bg-white/8 hover:bg-white/15 text-foreground"
       }`}
     >
       {icon}

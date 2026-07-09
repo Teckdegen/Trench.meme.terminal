@@ -586,7 +586,7 @@ function CabalPane({
         {channel.kind === "text" && <DiscordChat cabal={cabal} me={me} />}
         {channel.kind === "watchlist" && <WatchlistPane cabalId={cabal.id} me={me} hostAddress={cabal.host_address} />}
         {channel.kind === "voice" && channel.id && (
-          <VoicePane roomId={channel.id} me={me} membersCount={members.length} onClose={() => setChannel({ kind: "text" })} />
+          <VoicePane roomId={channel.id} me={me} onClose={() => setChannel({ kind: "text" })} />
         )}
       </div>
     </>
@@ -1147,8 +1147,8 @@ function MessageBody({
 // ============================================================================
 // VOICE PANE
 // ============================================================================
-function VoicePane({ roomId, me, membersCount, onClose }: {
-  roomId: string; me: string | undefined; membersCount: number; onClose: () => void;
+function VoicePane({ roomId, me, onClose }: {
+  roomId: string; me: string | undefined; onClose: () => void;
 }) {
   if (!me || !import.meta.env.VITE_AGORA_APP_ID) {
     return (
@@ -1163,13 +1163,7 @@ function VoicePane({ roomId, me, membersCount, onClose }: {
     );
   }
   return (
-    <div className="flex-1 flex flex-col">
-      <div className="flex-1 grid place-items-center bg-black/20">
-        <div className="text-center">
-          <p className="text-xs uppercase tracking-wide text-muted-foreground">Voice channel</p>
-          <p className="text-sm mt-1">{membersCount} in cabal · tap mic to talk</p>
-        </div>
-      </div>
+    <div className="flex-1 flex flex-col min-h-0">
       <RoomVoice roomId={roomId} identity={me} onLeave={onClose} />
     </div>
   );
