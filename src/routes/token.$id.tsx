@@ -242,7 +242,6 @@ function TokenPage() {
           {!isMobile && (
             <aside className="shrink-0 w-[280px] lg:w-[300px] xl:w-[320px] flex flex-col overflow-y-auto scrollbar-hide"
               style={{ borderLeft: "1px solid rgba(255,255,255,0.06)" }}>
-              <TokenBanner snapshot={snapshot} />
               <div className="p-3 flex flex-col gap-3">
                 <TokenStats buckets={activity.buckets} />
                 {tradePanel}
@@ -392,11 +391,9 @@ function TokenHeader({
           className="shrink-0 text-muted-foreground hover:text-foreground"><Send className="size-3.5" /></a>
       )}
 
-      {/* Push stats to the right */}
-      <div className="flex-1 min-w-[16px]" />
-
-      {/* MCAP · Price · Liquidity · 24h — all inline on the same row */}
-      <div className="shrink-0 flex items-center gap-5">
+      {/* MCAP · Price · Liquidity · 24h — spread evenly across the remaining
+          width so they run from the middle to the right edge, not bunched. */}
+      <div className="flex-1 flex items-center justify-around gap-4 pl-6 min-w-0">
         <InlineStat label="MCAP" value={mcap} />
         <InlineStat label="Price" value={price} />
         <InlineStat label="Liquidity" value={liq} />
@@ -411,20 +408,6 @@ function InlineStat({ label, value, color }: { label: string; value: string; col
     <div className="text-right">
       <div className="text-[10px] leading-none mb-0.5" style={{ color: "rgba(245,243,255,0.45)" }}>{label}</div>
       <div className="text-xs font-bold tabular-nums leading-none" style={{ color: color ?? "var(--color-foreground)" }}>{value}</div>
-    </div>
-  );
-}
-
-// Banner strip above the trade panel — real banner, or the token logo blurred.
-function TokenBanner({ snapshot }: { snapshot: TokenSnapshot | null }) {
-  const src = snapshot?.banner_uri || snapshot?.image_uri;
-  if (!src) return null;
-  return (
-    <div className="shrink-0 relative h-20 overflow-hidden">
-      <img src={src} alt="" className="w-full h-full object-cover"
-        style={snapshot?.banner_uri ? undefined : { filter: "blur(16px)", transform: "scale(1.4)" }} />
-      <div className="absolute inset-0"
-        style={{ background: "linear-gradient(to bottom, rgba(10,6,18,0.1), rgba(10,6,18,0.75))" }} />
     </div>
   );
 }
