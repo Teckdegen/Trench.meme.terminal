@@ -1,8 +1,8 @@
 # Para integration guide (trench.meme)
 
-How we use [Para](https://getpara.com) to log a user in with **socials** (Google /
-X / Apple) and then trade from a **server-signed wallet** — with **no browser
-transaction popups**.
+How we use [Para](https://getpara.com) to log a user in with **email or Google**
+(no wallet-connect) and then trade from a **server-signed wallet** — with **no
+browser transaction popups**.
 
 The whole thing hinges on one idea:
 
@@ -35,8 +35,8 @@ keyed to B.
 ┌────────────── browser ──────────────┐        ┌────────────── server ──────────────┐
 │                                      │        │                                     │
 │ 1. <ParaProvider> mounts             │        │                                     │
-│ 2. user clicks "Continue with Google"│        │                                     │
-│    → Para modal → social OAuth       │        │                                     │
+│ 2. user picks Email or Google        │        │                                     │
+│    → Para modal → auth               │        │                                     │
 │ 3. Para makes embedded wallet A      │        │                                     │
 │ 4. ParaSync: setMe(A)  ── bootstrap ─┼──┐     │                                     │
 │    + stash the para client on window │  │     │                                     │
@@ -88,8 +88,8 @@ MONAD_RPC_URL=https://rpc.monad.xyz
 ## 4. Client — the modal + social auth
 
 `src/components/ParaWalletProvider.tsx`. We lazy-load `@getpara/react-sdk-lite`
-and configure the modal so it **only** does social auth and never pops its own
-wallet/funds screens.
+and configure the modal so it offers **only email + Google** (no X/Apple, **no
+wallet-connect**) and never pops its own wallet/funds screens.
 
 ```tsx
 <ParaProvider
@@ -97,15 +97,15 @@ wallet/funds screens.
   config={{ appName: APP_NAME }}
   configOverrides={{
     authConfig: {
-      oAuthMethods: ["GOOGLE", "TWITTER", "APPLE"], // socials only
-      disableEmailLogin: true,
+      oAuthMethods: ["GOOGLE"],   // Google is the only OAuth social
+      disableEmailLogin: false,   // + email — those are the ONLY two
       disablePhoneLogin: true,
       isGuestModeEnabled: false,
     },
     modalConfig: {
-      disableAddFundsPrompt: true,   // Para must never open funds UI on its own
+      disableAddFundsPrompt: true, // Para must never open funds UI on its own
       authLayout: ["AUTH:FULL"],
-      hideWallets: false,
+      hideWallets: true,           // no external "connect wallet" options
     },
   }}
 >
@@ -115,16 +115,58 @@ wallet/funds screens.
 </ParaProvider>
 ```
 
-Opening the modal to sign in is just:
+> **Auth surface = two logins only.** `oAuthMethods: ["GOOGLE"]` +
+> `disableEmailLogin: false` gives you email and Google; `hideWallets: true`
+> removes the wallet-connect path so there is no way in except those two.
+
+A minimal, SDK-safe **login button**. The Para hooks live behind the lazily
+loaded module, so read them off the context (`useParaSdk()`) and only render the
+button once the module is present:
 
 ```tsx
-const { openModal } = Mod.useModal();
-<button onClick={() => openModal()}>Log in</button>
+import { useParaSdk } from "@/components/ParaWalletProvider";
+import { useMe } from "@/lib/useMe";
+
+export function LoginButton() {
+  const mod = useParaSdk();          // the loaded @getpara/react-sdk-lite module
+  const me = useMe();
+  if (me) return null;               // already signed in
+  if (!mod) return <button disabled>Loading…</button>;
+  return <OpenModalButton useModal={mod.useModal} />;
+}
+
+// A tiny child so the useModal() hook runs only when the SDK is ready.
+function OpenModalButton({ useModal }: { useModal: any }) {
+  const { openModal } = useModal();
+  return (
+    <button onClick={() => openModal()} className="lit-purple h-10 px-4 rounded-xl">
+      Log in
+    </button>
+  );
+}
 ```
 
-That's the entire "auth" surface. After the user picks Google/X/Apple and Para
-finishes OAuth, `useAccount().isConnected` flips to `true` and Para has minted
-embedded wallet **A**.
+That's the entire "auth" surface. After the user finishes email or Google,
+`useAccount().isConnected` flips to `true`, Para mints embedded wallet **A**, and
+the bridge takes over.
+
+**Signing out** clears our `me` and the Para session (see
+`src/lib/auth-signout.ts`):
+
+```tsx
+import { signOutEverywhere } from "@/lib/auth-signout";
+
+function SignOut({ useLogout }: { useLogout: any }) {
+  const logout = useLogout();
+  return (
+    <button onClick={() => signOutEverywhere(logout)}>
+      Sign out
+    </button>
+  );
+}
+// signOutEverywhere flips the isSigningOut() flag (so ParaSync clears me),
+// calls Para's logoutAsync(), and wipes the local me cache.
+```
 
 ---
 
@@ -312,21 +354,82 @@ async function paraRestSignTransaction(owner, tx) {
 }
 ```
 
-`sendViaPara(owner, { to, data, value })` wraps this with gas estimation + a
-`pub.call(...)` preflight (so a would-be revert surfaces as a clean error before
-we ever sign), and everything user-facing goes through server functions:
+`sendViaPara(owner, { to, data, value })` is the reusable "sign + broadcast one
+tx for the server wallet" primitive. It estimates gas, runs a `pub.call(...)`
+preflight (so a would-be revert surfaces as a clean error *before* we sign),
+builds the tx (nonce from `pending`, current gas price), signs via Para, then
+broadcasts and waits for the receipt — with one RPC-only retry:
 
 ```ts
-// The UI submits intent; the server signs + broadcasts. No popup.
+export async function sendViaPara(owner, { to, data, value, gas }) {
+  assertServerRuntime();                                  // never in the browser
+  const pub = createPublicClient({ chain: monadChain, transport: monadTransport });
+
+  // 1) gas: estimate + 30% headroom, floor for contract calls
+  gas ??= await pub.estimateGas({ account: owner, to, data, value })
+            .then((g) => (g * 13n) / 10n)
+            .catch(() => (data ? 1_500_000n : 42_000n));
+
+  // 2) preflight — surface reverts as readable errors before signing
+  if (data && data !== "0x") {
+    try { await pub.call({ account: owner, to, data, value, gas }); }
+    catch (e) { throw new Error(`Preflight failed: ${e.shortMessage ?? e.message}`); }
+  }
+
+  // 3) build tx (legacy type-0) with a fresh pending nonce
+  const gasPrice = await pub.getGasPrice();
+  const nonce    = await pub.getTransactionCount({ address: owner, blockTag: "pending" });
+  const tx = { to, data, value, nonce, gasLimit: gas, gasPrice };
+
+  // 4) sign via Para REST → broadcast → confirm (retry once on RPC blips)
+  const fire = async () => {
+    const hash    = await paraRestSignTransaction(owner, tx);   // §8 above
+    const receipt = await pub.waitForTransactionReceipt({ hash, timeout: 120_000 });
+    if (receipt.status !== "success") throw new Error(`Transaction reverted (${hash})`);
+    return hash;
+  };
+  try { return await fire(); }
+  catch (e) {
+    if (!/rpc request failed|network|timeout|fetch/i.test(String(e.message))) throw e;
+    await new Promise((r) => setTimeout(r, 900));
+    return fire();
+  }
+}
+```
+
+Everything user-facing is a thin `createServerFn` on top of that — the UI submits
+intent, the server signs + broadcasts, no popup:
+
+```ts
+// A swap: quote → approve (sells) → buy/sell, all server-signed. Fees are
+// applied here too (fee-first on buys, skimmed on sells).
 export const executeServerSwap = createServerFn({ method: "POST" })
-  .inputValidator((d) => d)
+  .inputValidator((d: {
+    owner: string; venue: "nadfun" | "dirol" | "auto";
+    side: "BUY" | "SELL"; tokenAddress: string; amountIn: string;
+    slippageBps?: number; source?: "market" | "limit" | "copy";
+  }) => d)
   .handler(async ({ data }) => {
     const { fireWithPara } = await import("./para-server-execute");
-    return fireWithPara({ owner: data.owner.toLowerCase(), /* … */ });
+    return fireWithPara({
+      owner: data.owner.toLowerCase(),
+      venue: data.venue, side: data.side,
+      tokenAddress: data.tokenAddress.toLowerCase(),
+      amountIn: BigInt(data.amountIn),
+      slippageBps: data.slippageBps ?? 50,
+      source: data.source ?? "market",
+    });
   });
 
+// A native MON withdrawal: the transfer + a 0.85% platform fee, both signed.
 export const withdrawMon = createServerFn({ method: "POST" })
-  .handler(async ({ data }) => sendViaPara(data.owner, { to: data.to, value: … }));
+  .inputValidator((d: { owner: string; to: string; amountWei: string }) => d)
+  .handler(async ({ data }) => {
+    const hash = await sendViaPara(data.owner, { to: data.to, value: BigInt(data.amountWei) });
+    const fee  = (BigInt(data.amountWei) * 85n) / 10_000n;      // 0.85%, charged extra
+    if (fee > 0n) await sendViaPara(data.owner, { to: FEE_WALLET, value: fee }).catch(() => {});
+    return hash;
+  });
 ```
 
 ---
@@ -334,7 +437,7 @@ export const withdrawMon = createServerFn({ method: "POST" })
 ## 9. Calling it from the UI
 
 The client never signs — it calls the server function with `me` (= wallet B) and
-waits for a hash:
+waits for a hash. The one-liner:
 
 ```ts
 import { executeServerSwap } from "@/lib/para-session";
@@ -342,16 +445,101 @@ import { executeServerSwap } from "@/lib/para-session";
 const me = useMe();                 // wallet B
 const hash = await executeServerSwap({
   data: {
-    owner: me,
-    venue: "auto",
-    side: "BUY",
-    tokenAddress,
-    amountIn: rawAmountWei.toString(),
-    slippageBps: 50,
-    source: "market",
+    owner: me, venue: "auto", side: "BUY",
+    tokenAddress, amountIn: rawAmountWei.toString(),
+    slippageBps: 50, source: "market",
   },
 });
 // hash is on-chain — show it, link to the explorer. No wallet modal ever opened.
+```
+
+A full **Buy button** component — reads the live MON balance, submits the intent,
+handles loading/errors, and links the resulting tx. Note there is **no wagmi, no
+`useSendTransaction`, no popup** — just a server call:
+
+```tsx
+import { useState } from "react";
+import { parseEther } from "viem";
+import { useMe } from "@/lib/useMe";
+import { useMonBalance } from "@/lib/wallet-tx";      // live native balance, polls 15s
+import { executeServerSwap } from "@/lib/para-session";
+import { txUrl } from "@/lib/explorer";
+
+export function BuyButton({ tokenAddress }: { tokenAddress: string }) {
+  const me = useMe();                                 // wallet B, or undefined
+  const { balance, loading } = useMonBalance(me);
+  const [amount, setAmount] = useState("");           // MON, as a string
+  const [pending, setPending] = useState(false);
+  const [hash, setHash] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const buy = async () => {
+    if (!me || !amount) return;
+    setPending(true); setError(null); setHash(null);
+    try {
+      const tx = await executeServerSwap({
+        data: {
+          owner: me,
+          venue: "auto",                              // let the server route it
+          side: "BUY",
+          tokenAddress,
+          amountIn: parseEther(amount).toString(),    // MON → wei string
+          slippageBps: 50,
+          source: "market",
+        },
+      });
+      setHash(tx.hash ?? tx);                         // server fn returns the hash
+    } catch (e: any) {
+      // Server surfaces clean messages: "Preflight failed: …",
+      // "No Para REST wallet for 0x… — sign out and back in",
+      // "Para session expired - sign in again", etc.
+      setError(e?.message ?? "Swap failed");
+    } finally {
+      setPending(false);
+    }
+  };
+
+  if (!me) return <p className="text-sm text-muted-foreground">Log in to trade.</p>;
+
+  return (
+    <div className="space-y-2">
+      <p className="text-xs text-muted-foreground">
+        Balance: {loading ? "…" : `${balance.toFixed(4)} MON`}
+      </p>
+      <input
+        value={amount}
+        onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))}
+        inputMode="decimal"
+        placeholder="0.00"
+        className="w-full h-11 rounded-xl bg-surface-2 px-3"
+      />
+      <button
+        onClick={buy}
+        disabled={pending || !amount}
+        className="h-11 w-full rounded-xl bg-up text-background font-bold disabled:opacity-40"
+      >
+        {pending ? "Submitting…" : "Buy"}
+      </button>
+      {hash && (
+        <a href={txUrl(hash)} target="_blank" rel="noreferrer"
+           className="block text-xs text-primary">Tx confirmed · view on explorer</a>
+      )}
+      {error && <p className="text-xs text-down">{error}</p>}
+    </div>
+  );
+}
+```
+
+**Reading balances / holdings** is likewise plain RPC against wallet B — no Para
+involved once you have the address:
+
+```ts
+import { useMonBalance, useTokenBalance, useTokenHoldings } from "@/lib/wallet-tx";
+
+const me = useMe();
+const mon      = useMonBalance(me);                   // native MON
+const tokenBal = useTokenBalance(me, tokenAddress);   // one ERC-20
+const { holdings } = useTokenHoldings(me);            // full portfolio (USD-valued)
 ```
 
 ---

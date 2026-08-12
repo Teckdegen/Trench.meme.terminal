@@ -60,8 +60,9 @@ function ParaInner({ apiKey, children }: { apiKey: string; children: ReactNode }
       configOverrides={{
         themeConfig: { "borderRadius": "md", "foregroundMixRatio": 0.08, "foregroundColor": "#000000", "font": "Inter" },
         authConfig: {
-          oAuthMethods: ["GOOGLE", "TWITTER", "APPLE"],
-          disableEmailLogin: true,
+          // Email + Google only. No X/Apple, no wallet-connect.
+          oAuthMethods: ["GOOGLE"],
+          disableEmailLogin: false,
           disablePhoneLogin: true,
           isGuestModeEnabled: false,
           twoFactorAuthEnabled: false,
@@ -71,7 +72,9 @@ function ParaInner({ apiKey, children }: { apiKey: string; children: ReactNode }
           // own. The modal only opens when WE call openModal().
           disableAddFundsPrompt: true,
           authLayout: ["AUTH:FULL"],
-          hideWallets: false,
+          // Hide the external-wallet ("connect wallet") options entirely —
+          // we only want the two social/email logins.
+          hideWallets: true,
         },
       }}
       paraModalConfig={{
